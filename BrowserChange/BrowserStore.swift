@@ -257,6 +257,9 @@ final class BrowserStore {
                 return "\(browserName) is not available. Reinstall it or choose another browser."
             }
             return "The previous browser is not available, so BrowserChange could not restore it."
+        case .missingBaseline(let scheme):
+            let schemeName = scheme.rawValue.uppercased()
+            return "BrowserChange cannot safely change the \(schemeName) handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
         case .handlerChangeFailed:
             return "macOS did not change both web-link handlers. The previous handlers were restored."
         case .verificationFailed:

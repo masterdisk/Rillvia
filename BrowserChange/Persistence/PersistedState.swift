@@ -29,6 +29,8 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
     var undoReceipt: HandlerUndoReceipt
     /// Schemes this operation actually changed and therefore owns for rollback.
     var completedSchemes: [WebScheme] = []
+    /// The write intent persisted before mutating Launch Services.
+    var inFlightScheme: WebScheme?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -37,6 +39,7 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
         case desiredHandlers
         case undoReceipt
         case completedSchemes
+        case inFlightScheme
     }
 
     init(
@@ -45,7 +48,8 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
         kind: HandlerOperationKind = .direct,
         desiredHandlers: HTTPHandlerSnapshot,
         undoReceipt: HandlerUndoReceipt,
-        completedSchemes: [WebScheme] = []
+        completedSchemes: [WebScheme] = [],
+        inFlightScheme: WebScheme? = nil
     ) {
         self.id = id
         self.startedAt = startedAt
@@ -53,6 +57,7 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
         self.desiredHandlers = desiredHandlers
         self.undoReceipt = undoReceipt
         self.completedSchemes = completedSchemes
+        self.inFlightScheme = inFlightScheme
     }
 
     init(from decoder: Decoder) throws {
@@ -75,11 +80,15 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
             [WebScheme].self,
             forKey: .completedSchemes
         ) ?? []
+        inFlightScheme = try values.decodeIfPresent(
+            WebScheme.self,
+            forKey: .inFlightScheme
+        )
     }
 }
 
 struct HandlerOperationJournal: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int
     var pendingOperation: PendingHandlerOperation?

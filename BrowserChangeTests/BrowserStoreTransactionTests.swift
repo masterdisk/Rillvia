@@ -110,6 +110,25 @@ final class BrowserStoreTransactionTests: XCTestCase {
         XCTAssertEqual(store.message, "Left the default where it was.")
     }
 
+    func testMissingBaselineExplainsHowToMakeSwitchingSafe() async {
+        let handler = makeHandler(
+            handlers: HTTPHandlerSnapshot(
+                http: nil,
+                https: application(for: chrome)
+            )
+        )
+        let store = makeStore(handler: handler)
+
+        await store.makeDefault(safari)
+
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        XCTAssertEqual(store.transactionStatus, .idle)
+        XCTAssertEqual(
+            store.message,
+            "BrowserChange cannot safely change the HTTP handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
+        )
+    }
+
     func testRollbackFailurePublishesDegradedTransactionState() async {
         let handler = makeHandler(handlers: .same(application(for: chrome)))
         handler.setErrorsByCall[1] = TestFailure.change

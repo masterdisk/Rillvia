@@ -2,6 +2,7 @@ import Foundation
 
 enum HandlerTransactionIssue: Equatable, Sendable {
     case targetUnavailable
+    case missingBaseline(WebScheme)
     case handlerChangeFailed
     case verificationFailed
     case handlersChangedExternally
@@ -97,6 +98,12 @@ final class HandlerTransactionCoordinator {
             applicationURL: applicationURL
         )
         let desired = HTTPHandlerSnapshot.same(desiredApplication)
+        if let scheme = missingRestoreScheme(
+            current: baseline,
+            desired: desired
+        ) {
+            return .failed(.missingBaseline(scheme))
+        }
         let operationID = makeOperationID()
         let receipt = HandlerUndoReceipt(
             operationID: operationID,
@@ -143,9 +150,10 @@ final class HandlerTransactionCoordinator {
 
             for scheme in Self.schemeOrder
             where !applicationsMatch(live[scheme], receipt.restore[scheme]) {
-                guard let restore = receipt.restore[scheme],
-                      systemHandler.applicationURL(for: restore.browser) != nil
-                else {
+                guard let restore = receipt.restore[scheme] else {
+                    return .failed(.missingBaseline(scheme))
+                }
+                guard systemHandler.applicationURL(for: restore.browser) != nil else {
                     return .failed(.targetUnavailable)
                 }
             }
@@ -248,6 +256,18 @@ final class HandlerTransactionCoordinator {
                 )
             }
 
+            operation.inFlightScheme = scheme
+            journal.pendingOperation = operation
+            do {
+                try repository.saveHandlerJournal(journal)
+            } catch {
+                return await fail(
+                    .statePersistenceFailed,
+                    operation: operation,
+                    journal: &journal
+                )
+            }
+
             do {
                 try await systemHandler.setDefaultHandler(
                     desiredApplication.browser,
@@ -261,6 +281,7 @@ final class HandlerTransactionCoordinator {
                     if !operation.completedSchemes.contains(scheme) {
                         operation.completedSchemes.append(scheme)
                     }
+                    operation.inFlightScheme = nil
                     journal.pendingOperation = operation
                     do {
                         try repository.saveHandlerJournal(journal)
@@ -283,6 +304,7 @@ final class HandlerTransactionCoordinator {
             if !operation.completedSchemes.contains(scheme) {
                 operation.completedSchemes.append(scheme)
             }
+            operation.inFlightScheme = nil
             journal.pendingOperation = operation
             do {
                 try repository.saveHandlerJournal(journal)
@@ -343,8 +365,13 @@ final class HandlerTransactionCoordinator {
     ) async -> ReconciliationResult {
         var sawExternalChange = false
         var restoreFailed = false
+        var ownedSchemes = operation.completedSchemes
+        if let inFlightScheme = operation.inFlightScheme,
+           !ownedSchemes.contains(inFlightScheme) {
+            ownedSchemes.append(inFlightScheme)
+        }
 
-        for scheme in operation.completedSchemes.reversed() {
+        for scheme in ownedSchemes.reversed() {
             let liveApplication = systemHandler.currentHandlers()[scheme]
             let desiredApplication = operation.desiredHandlers[scheme]
             let restoreApplication = operation.undoReceipt.restore[scheme]
@@ -412,6 +439,16 @@ final class HandlerTransactionCoordinator {
         _ rhs: HandlerApplication?
     ) -> Bool {
         lhs?.browser == rhs?.browser
+    }
+
+    private func missingRestoreScheme(
+        current: HTTPHandlerSnapshot,
+        desired: HTTPHandlerSnapshot
+    ) -> WebScheme? {
+        Self.schemeOrder.first { scheme in
+            !applicationsMatch(current[scheme], desired[scheme])
+                && current[scheme] == nil
+        }
     }
 
     private func isCancellation(_ error: Error) -> Bool {

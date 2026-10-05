@@ -50,6 +50,7 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         let handler = makeHandler(handlers: .same(chrome))
         var pendingBeforeMutation: PendingHandlerOperation?
         var progressBeforeHTTP: [WebScheme]?
+        var inFlightBeforeHTTP: WebScheme?
         var journalReadError: Error?
         handler.beforeSet = { [repository] _, index in
             do {
@@ -58,6 +59,7 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
                     pendingBeforeMutation = pending
                 } else if index == 1 {
                     progressBeforeHTTP = pending?.completedSchemes
+                    inFlightBeforeHTTP = pending?.inFlightScheme
                 }
             } catch {
                 journalReadError = error
@@ -70,7 +72,9 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         XCTAssertNil(journalReadError)
         XCTAssertEqual(pendingBeforeMutation?.desiredHandlers, .same(safari))
         XCTAssertEqual(pendingBeforeMutation?.completedSchemes, [])
+        XCTAssertEqual(pendingBeforeMutation?.inFlightScheme, .https)
         XCTAssertEqual(progressBeforeHTTP, [.https])
+        XCTAssertEqual(inFlightBeforeHTTP, .http)
         XCTAssertEqual(
             handler.setCalls,
             [
@@ -209,6 +213,38 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         XCTAssertEqual(journal.undoReceipt, receipt)
     }
 
+    func testRecoveryRestoresDirectSchemeThatWasInFlightAtCrash() async throws {
+        let handler = makeHandler(
+            handlers: HTTPHandlerSnapshot(http: chrome, https: safari)
+        )
+        let pending = PendingHandlerOperation(
+            id: operationID,
+            startedAt: now,
+            kind: .direct,
+            desiredHandlers: .same(safari),
+            undoReceipt: makeReceipt(
+                precondition: .same(safari),
+                restore: .same(chrome)
+            ),
+            completedSchemes: [],
+            inFlightScheme: .https
+        )
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(pendingOperation: pending)
+        )
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.recoverPendingOperation()
+
+        XCTAssertEqual(outcome, .rolledBack)
+        XCTAssertEqual(
+            handler.setCalls,
+            [.init(browser: chrome.browser, scheme: .https)]
+        )
+        XCTAssertEqual(handler.handlers, .same(chrome))
+        XCTAssertNil(try repository.loadHandlerJournal().pendingOperation)
+    }
+
     func testRecoveryRestoresOnlySchemesRecordedAsOwned() async throws {
         let live = HTTPHandlerSnapshot(http: firefox, https: safari)
         let handler = makeHandler(handlers: live)
@@ -238,6 +274,49 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         XCTAssertEqual(handler.handlers.http, firefox)
         XCTAssertEqual(handler.handlers.https, chrome)
         XCTAssertNil(try repository.loadHandlerJournal().pendingOperation)
+    }
+
+    func testRecoveryRestoresUndoSchemeThatWasInFlightAtCrash() async throws {
+        let directReceipt = makeReceipt(
+            precondition: .same(safari),
+            restore: .same(chrome)
+        )
+        let undoOperation = PendingHandlerOperation(
+            id: operationID,
+            startedAt: now,
+            kind: .undo,
+            desiredHandlers: .same(chrome),
+            undoReceipt: HandlerUndoReceipt(
+                operationID: operationID,
+                issuedAt: now,
+                precondition: .same(chrome),
+                restore: .same(safari)
+            ),
+            completedSchemes: [],
+            inFlightScheme: .https
+        )
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(
+                pendingOperation: undoOperation,
+                undoReceipt: directReceipt
+            )
+        )
+        let handler = makeHandler(
+            handlers: HTTPHandlerSnapshot(http: safari, https: chrome)
+        )
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.recoverPendingOperation()
+
+        XCTAssertEqual(outcome, .rolledBack)
+        XCTAssertEqual(
+            handler.setCalls,
+            [.init(browser: safari.browser, scheme: .https)]
+        )
+        XCTAssertEqual(handler.handlers, .same(safari))
+        let journal = try repository.loadHandlerJournal()
+        XCTAssertNil(journal.pendingOperation)
+        XCTAssertEqual(journal.undoReceipt, directReceipt)
     }
 
     func testUndoRestoresReceiptSnapshotAndClearsReceipt() async throws {
@@ -307,6 +386,70 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         XCTAssertEqual(outcome, .failed(.targetUnavailable))
         XCTAssertTrue(handler.setCalls.isEmpty)
         XCTAssertEqual(try repository.loadHandlerJournal(), .fresh)
+    }
+
+    func testDirectSwitchRefusesChangedSchemeWithMissingBaseline() async throws {
+        let handler = makeHandler(
+            handlers: HTTPHandlerSnapshot(http: nil, https: chrome)
+        )
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.switchDirect(to: safari.browser)
+
+        XCTAssertEqual(outcome, .failed(.missingBaseline(.http)))
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        XCTAssertEqual(try repository.loadHandlerJournal(), .fresh)
+    }
+
+    func testRecoveryLeavesPendingWhenOwnedSchemeHasMissingBaseline() async throws {
+        let restore = HTTPHandlerSnapshot(http: nil, https: chrome)
+        let pending = PendingHandlerOperation(
+            id: operationID,
+            startedAt: now,
+            kind: .direct,
+            desiredHandlers: .same(safari),
+            undoReceipt: makeReceipt(
+                precondition: .same(safari),
+                restore: restore
+            ),
+            completedSchemes: [.http]
+        )
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(pendingOperation: pending)
+        )
+        let handler = makeHandler(
+            handlers: HTTPHandlerSnapshot(http: safari, https: chrome)
+        )
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.recoverPendingOperation()
+
+        XCTAssertEqual(outcome, .degraded(.rollbackFailed))
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        XCTAssertEqual(
+            try repository.loadHandlerJournal().pendingOperation,
+            pending
+        )
+    }
+
+    func testUndoRefusesChangedSchemeWithMissingRestoreBaseline() async throws {
+        let receipt = makeReceipt(
+            precondition: .same(safari),
+            restore: HTTPHandlerSnapshot(http: nil, https: chrome)
+        )
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(undoReceipt: receipt)
+        )
+        let handler = makeHandler(handlers: .same(safari))
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.undo()
+
+        XCTAssertEqual(outcome, .failed(.missingBaseline(.http)))
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        let journal = try repository.loadHandlerJournal()
+        XCTAssertNil(journal.pendingOperation)
+        XCTAssertEqual(journal.undoReceipt, receipt)
     }
 
     private func makeHandler(
