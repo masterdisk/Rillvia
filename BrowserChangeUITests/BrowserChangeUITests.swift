@@ -23,9 +23,12 @@ final class BrowserChangeUITests: XCTestCase {
             "Installed browsers should be presented in a native sidebar."
         )
         XCTAssertTrue(
-            app.staticTexts["future-features-title"].exists,
-            "Future ideas should remain visible but secondary."
+            app.staticTexts["routing-summary-title"].exists,
+            "Live routing state should remain visible but secondary."
         )
+        XCTAssertTrue(app.buttons["nav-airlock"].exists)
+        XCTAssertTrue(app.buttons["nav-rules"].exists)
+        XCTAssertTrue(app.buttons["nav-profiles"].exists)
         XCTAssertFalse(
             app.staticTexts["Where links could go"].exists,
             "The old dashboard-style preview heading should be removed."
@@ -36,7 +39,7 @@ final class BrowserChangeUITests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
-        let safari = app.staticTexts["Safari"].firstMatch
+        let safari = app.descendants(matching: .any)["Safari"].firstMatch
         XCTAssertTrue(safari.exists)
         safari.click()
         XCTAssertTrue(
@@ -89,7 +92,7 @@ final class BrowserChangeUITests: XCTestCase {
             "A split HTTP/HTTPS state should be explained in the main workspace."
         )
 
-        app.staticTexts["Safari"].firstMatch.click()
+        app.descendants(matching: .any)["Safari"].firstMatch.click()
         let repair = app.buttons["Repair handlers with Safari"]
         XCTAssertTrue(repair.waitForExistence(timeout: 2))
         repair.click()
@@ -103,6 +106,52 @@ final class BrowserChangeUITests: XCTestCase {
         )
     }
 
+    func testAirlockPreviewsAndTeachesRuleOnlyAfterExplicitOpen() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
+        app.launch()
+
+        let enable = app.buttons[
+            "Turn on Smart Routing with Google Chrome"
+        ]
+        XCTAssertTrue(enable.waitForExistence(timeout: 4))
+        enable.click()
+
+        let airlock = app.buttons["nav-airlock"]
+        XCTAssertTrue(airlock.waitForExistence(timeout: 2))
+        airlock.click()
+
+        let input = app.textViews["airlock-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
+        input.click()
+        input.typeText(
+            "https://Docs.Example.com/private?utm_source=mail"
+        )
+        app.buttons["airlock-preview"].click()
+
+        XCTAssertTrue(
+            app.staticTexts["docs.example.com"].waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(app.staticTexts["Google Chrome"].exists)
+
+        app.buttons["airlock-open-in"].click()
+        let always = app.checkBoxes["chooser-always"]
+        XCTAssertTrue(always.waitForExistence(timeout: 2))
+        always.click()
+        app.radioButtons["Include subdomains"].click()
+        app.buttons["chooser-open-Safari"].click()
+
+        app.buttons["nav-rules"].click()
+        XCTAssertTrue(
+            app.staticTexts["rules-title"].waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(app.staticTexts["docs.example.com"].exists)
+        XCTAssertTrue(app.staticTexts["Include subdomains"].exists)
+    }
+
     func testSuccessfulDirectSwitchCanBeUndoneFromTheMainWorkspace() {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -111,7 +160,7 @@ final class BrowserChangeUITests: XCTestCase {
         ]
         app.launch()
 
-        app.staticTexts["Safari"].firstMatch.click()
+        app.descendants(matching: .any)["Safari"].firstMatch.click()
         let makeDefault = app.buttons["Make Safari the default"]
         XCTAssertTrue(makeDefault.waitForExistence(timeout: 2))
         makeDefault.click()
@@ -157,7 +206,7 @@ final class BrowserChangeUITests: XCTestCase {
             ].exists
         )
 
-        app.staticTexts["Safari"].firstMatch.click()
+        app.descendants(matching: .any)["Safari"].firstMatch.click()
         let useSafari = app.buttons[
             "Use Safari as Smart Routing fallback"
         ]

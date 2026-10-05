@@ -67,6 +67,45 @@ final class StateRepository {
         try save(configuration, fileName: FileName.configuration)
     }
 
+    func saveConfigurationSnapshot(
+        _ configuration: RoutingConfiguration,
+        recordedAt: Date = .now,
+        historyLimit: Int = 50
+    ) throws {
+        let previousHistory = try loadConfigurationHistory()
+        let history = appendingSnapshot(
+            of: configuration,
+            recordedAt: recordedAt,
+            historyLimit: historyLimit,
+            to: previousHistory
+        )
+
+        try save(history, fileName: FileName.configurationHistory)
+        do {
+            try save(configuration, fileName: FileName.configuration)
+        } catch {
+            try? save(
+                previousHistory,
+                fileName: FileName.configurationHistory
+            )
+            throw error
+        }
+    }
+
+    func appendConfigurationSnapshot(
+        _ configuration: RoutingConfiguration,
+        recordedAt: Date = .now,
+        historyLimit: Int = 50
+    ) throws {
+        let history = appendingSnapshot(
+            of: configuration,
+            recordedAt: recordedAt,
+            historyLimit: historyLimit,
+            to: try loadConfigurationHistory()
+        )
+        try save(history, fileName: FileName.configurationHistory)
+    }
+
     func loadHandlerJournal() throws -> HandlerOperationJournal {
         try load(
             HandlerOperationJournal.self,
@@ -87,6 +126,27 @@ final class StateRepository {
 
     func saveConfigurationHistory(_ history: ConfigurationHistory) throws {
         try save(history, fileName: FileName.configurationHistory)
+    }
+
+    private func appendingSnapshot(
+        of configuration: RoutingConfiguration,
+        recordedAt: Date,
+        historyLimit: Int,
+        to history: ConfigurationHistory
+    ) -> ConfigurationHistory {
+        var history = history
+        history.entries.append(
+            ConfigurationHistoryEntry(
+                id: UUID(),
+                recordedAt: recordedAt,
+                configuration: configuration
+            )
+        )
+        let limit = max(0, historyLimit)
+        if history.entries.count > limit {
+            history.entries = Array(history.entries.suffix(limit))
+        }
+        return history
     }
 
     private func load<Value: VersionedPersistedState>(

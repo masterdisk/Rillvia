@@ -4,12 +4,47 @@ struct BrowserSidebar: View {
     @Environment(BrowserStore.self) private var store
 
     var body: some View {
-        @Bindable var store = store
-        List(selection: $store.selectedID) {
+        List {
+            Section("Routing") {
+                WorkspaceNavigationRow(
+                    destination: .direct,
+                    title: "Direct switcher",
+                    systemImage: "arrow.up.right.square"
+                )
+                WorkspaceNavigationRow(
+                    destination: .airlock,
+                    title: "Link Airlock",
+                    systemImage: "checkmark.shield"
+                )
+                WorkspaceNavigationRow(
+                    destination: .rules,
+                    title: "Rules",
+                    systemImage: "arrow.triangle.branch"
+                )
+                WorkspaceNavigationRow(
+                    destination: .profiles,
+                    title: "Profiles",
+                    systemImage: "person.2"
+                )
+            }
+
             Section {
                 ForEach(store.browsers) { browser in
                     BrowserSidebarRow(browser: browser)
-                        .tag(browser.id)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        store.selectBrowser(browser.id)
+                    }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction {
+                        store.selectBrowser(browser.id)
+                    }
+                    .listRowBackground(
+                        store.workspaceDestination == .direct
+                            && store.selectedID == browser.id
+                            ? Color.accentColor.opacity(0.14)
+                            : Color.clear
+                    )
                 }
             } header: {
                 Text("Browsers")
@@ -20,6 +55,30 @@ struct BrowserSidebar: View {
         }
         .listStyle(.sidebar)
         .accessibilityIdentifier("browser-sidebar")
+    }
+}
+
+private struct WorkspaceNavigationRow: View {
+    @Environment(BrowserStore.self) private var store
+    var destination: WorkspaceDestination
+    var title: String
+    var systemImage: String
+
+    var body: some View {
+        Button {
+            store.showWorkspace(destination)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(
+            store.workspaceDestination == destination
+                ? Color.accentColor.opacity(0.14)
+                : Color.clear
+        )
+        .accessibilityIdentifier("nav-\(destination.rawValue)")
     }
 }
 
@@ -71,6 +130,26 @@ private struct BrowserSidebarRow: View {
 
 struct BrowserWorkspace: View {
     @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        Group {
+            switch store.workspaceDestination {
+            case .direct:
+                DirectWorkspace()
+            case .airlock:
+                LinkAirlockView()
+            case .rules:
+                RulesView()
+            case .profiles:
+                ProfilesView()
+            }
+        }
+        .id(store.workspaceDestination)
+    }
+}
+
+private struct DirectWorkspace: View {
+    @Environment(BrowserStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -102,7 +181,7 @@ struct BrowserWorkspace: View {
 
                 Divider()
 
-                FutureFeaturesView()
+                RoutingSummaryView()
             }
             .frame(maxWidth: 720, alignment: .leading)
             .padding(.horizontal, 40)

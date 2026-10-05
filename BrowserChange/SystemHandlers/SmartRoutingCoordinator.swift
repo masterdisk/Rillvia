@@ -154,7 +154,31 @@ final class SmartRoutingCoordinator {
             RoutingConfiguration.currentSchemaVersion
         desiredConfiguration.fallbackBrowser = fallback
         do {
-            try repository.saveConfiguration(desiredConfiguration)
+            try repository.saveConfigurationSnapshot(desiredConfiguration)
+            configuration = desiredConfiguration
+            status = reconciledStatus()
+            return .succeeded
+        } catch {
+            status = .degraded(.configurationPersistenceFailed)
+            return .degraded(.configurationPersistenceFailed)
+        }
+    }
+
+    func applyConfiguration(
+        _ desiredConfiguration: RoutingConfiguration,
+        recordingSnapshot: Bool = true
+    ) -> SmartRoutingTransitionOutcome {
+        var desiredConfiguration = desiredConfiguration
+        desiredConfiguration.schemaVersion =
+            RoutingConfiguration.currentSchemaVersion
+        do {
+            if recordingSnapshot {
+                try repository.saveConfigurationSnapshot(
+                    desiredConfiguration
+                )
+            } else {
+                try repository.saveConfiguration(desiredConfiguration)
+            }
             configuration = desiredConfiguration
             status = reconciledStatus()
             return .succeeded
@@ -176,7 +200,13 @@ final class SmartRoutingCoordinator {
         switch outcome {
         case .succeeded:
             reloadConfigurationAndStatus()
-            return .succeeded
+            do {
+                try repository.appendConfigurationSnapshot(configuration)
+                return .succeeded
+            } catch {
+                status = .degraded(.configurationPersistenceFailed)
+                return .degraded(.configurationPersistenceFailed)
+            }
         case .cancelled:
             reloadConfigurationAndStatus()
             return .failed(.transitionCancelled)

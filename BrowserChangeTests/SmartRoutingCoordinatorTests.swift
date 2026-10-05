@@ -93,6 +93,17 @@ final class SmartRoutingCoordinatorTests: XCTestCase {
                 fallbackBrowser: chrome.browser
             )
         )
+        XCTAssertEqual(
+            try repository.loadConfigurationHistory().entries.map(
+                \.configuration
+            ),
+            [
+                RoutingConfiguration(
+                    mode: .smart,
+                    fallbackBrowser: chrome.browser
+                ),
+            ]
+        )
         XCTAssertEqual(coordinator.status, .active(chrome.browser))
     }
 

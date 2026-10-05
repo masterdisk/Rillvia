@@ -105,6 +105,23 @@ struct MenuPanel: View {
                 .disabled(store.isSwitching)
             }
 
+            if store.hasClipboardWebURL {
+                Button {
+                    guard store.stageClipboardURL() else { return }
+                    openWindow(id: "main")
+                    NSApp.activate()
+                    dismiss()
+                } label: {
+                    Label(
+                        "Open Clipboard Link…",
+                        systemImage: "checkmark.shield"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("menu-open-clipboard-link")
+            }
+
             if store.switchable.count > 7 {
                 ScrollView {
                     rows

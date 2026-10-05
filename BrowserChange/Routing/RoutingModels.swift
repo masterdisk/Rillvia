@@ -5,6 +5,17 @@ enum RoutingMode: String, Codable, CaseIterable, Sendable {
     case smart
 }
 
+enum DomainRuleScope: String, Codable, CaseIterable, Sendable {
+    case exactHost
+    case includeSubdomains
+}
+
+enum ConfigurationSource: String, Codable, Sendable {
+    case manual
+    case airlock
+    case migrated
+}
+
 /// A durable browser identity. Application URLs may change when an app is moved
 /// or updated, so persisted routing values keep only the bundle identifier.
 struct BrowserReference: Codable, Hashable, Identifiable, Sendable {
@@ -23,21 +34,79 @@ struct DomainRule: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var revision: Int
     var domain: String
+    var scope: DomainRuleScope
     var browser: BrowserReference
+    var profileID: UUID?
     var isEnabled: Bool
+    var createdAt: Date
+    var updatedAt: Date
+    var source: ConfigurationSource
 
     init(
         id: UUID = UUID(),
         revision: Int = 1,
         domain: String,
+        scope: DomainRuleScope = .exactHost,
         browser: BrowserReference,
-        isEnabled: Bool = true
+        profileID: UUID? = nil,
+        isEnabled: Bool = true,
+        createdAt: Date = .now,
+        updatedAt: Date = .now,
+        source: ConfigurationSource = .manual
     ) {
         self.id = id
         self.revision = revision
         self.domain = domain
+        self.scope = scope
         self.browser = browser
+        self.profileID = profileID
         self.isEnabled = isEnabled
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case revision
+        case domain
+        case scope
+        case browser
+        case profileID
+        case isEnabled
+        case createdAt
+        case updatedAt
+        case source
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let migratedAt = Date(timeIntervalSince1970: 0)
+        id = try values.decode(UUID.self, forKey: .id)
+        revision = try values.decodeIfPresent(Int.self, forKey: .revision) ?? 1
+        domain = try values.decode(String.self, forKey: .domain)
+        scope = try values.decodeIfPresent(
+            DomainRuleScope.self,
+            forKey: .scope
+        ) ?? .exactHost
+        browser = try values.decode(BrowserReference.self, forKey: .browser)
+        profileID = try values.decodeIfPresent(UUID.self, forKey: .profileID)
+        isEnabled = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .isEnabled
+        ) ?? true
+        createdAt = try values.decodeIfPresent(
+            Date.self,
+            forKey: .createdAt
+        ) ?? migratedAt
+        updatedAt = try values.decodeIfPresent(
+            Date.self,
+            forKey: .updatedAt
+        ) ?? createdAt
+        source = try values.decodeIfPresent(
+            ConfigurationSource.self,
+            forKey: .source
+        ) ?? .migrated
     }
 }
 
@@ -45,21 +114,69 @@ struct RoutingProfile: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var revision: Int
     var name: String
-    var browser: BrowserReference
+    var browser: BrowserReference?
     var isEnabled: Bool
+    var createdAt: Date
+    var updatedAt: Date
+    var source: ConfigurationSource
 
     init(
         id: UUID = UUID(),
         revision: Int = 1,
         name: String,
-        browser: BrowserReference,
-        isEnabled: Bool = true
+        browser: BrowserReference? = nil,
+        isEnabled: Bool = true,
+        createdAt: Date = .now,
+        updatedAt: Date = .now,
+        source: ConfigurationSource = .manual
     ) {
         self.id = id
         self.revision = revision
         self.name = name
         self.browser = browser
         self.isEnabled = isEnabled
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case revision
+        case name
+        case browser
+        case isEnabled
+        case createdAt
+        case updatedAt
+        case source
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let migratedAt = Date(timeIntervalSince1970: 0)
+        id = try values.decode(UUID.self, forKey: .id)
+        revision = try values.decodeIfPresent(Int.self, forKey: .revision) ?? 1
+        name = try values.decode(String.self, forKey: .name)
+        browser = try values.decodeIfPresent(
+            BrowserReference.self,
+            forKey: .browser
+        )
+        isEnabled = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .isEnabled
+        ) ?? true
+        createdAt = try values.decodeIfPresent(
+            Date.self,
+            forKey: .createdAt
+        ) ?? migratedAt
+        updatedAt = try values.decodeIfPresent(
+            Date.self,
+            forKey: .updatedAt
+        ) ?? createdAt
+        source = try values.decodeIfPresent(
+            ConfigurationSource.self,
+            forKey: .source
+        ) ?? .migrated
     }
 }
 
@@ -86,13 +203,14 @@ struct RoutingLease: Codable, Equatable, Identifiable, Sendable {
 }
 
 struct RoutingConfiguration: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int
     var mode: RoutingMode
     var fallbackBrowser: BrowserReference?
     var domainRules: [DomainRule]
     var profiles: [RoutingProfile]
+    var activeProfileID: UUID?
     var leases: [RoutingLease]
 
     init(
@@ -101,6 +219,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         fallbackBrowser: BrowserReference? = nil,
         domainRules: [DomainRule] = [],
         profiles: [RoutingProfile] = [],
+        activeProfileID: UUID? = nil,
         leases: [RoutingLease] = []
     ) {
         self.schemaVersion = schemaVersion
@@ -108,8 +227,53 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         self.fallbackBrowser = fallbackBrowser
         self.domainRules = domainRules
         self.profiles = profiles
+        self.activeProfileID = activeProfileID
         self.leases = leases
     }
 
     static let fresh = RoutingConfiguration()
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case mode
+        case fallbackBrowser
+        case domainRules
+        case profiles
+        case activeProfileID
+        case leases
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = Self.currentSchemaVersion
+        mode = try values.decodeIfPresent(
+            RoutingMode.self,
+            forKey: .mode
+        ) ?? .direct
+        fallbackBrowser = try values.decodeIfPresent(
+            BrowserReference.self,
+            forKey: .fallbackBrowser
+        )
+        domainRules = try values.decodeIfPresent(
+            [DomainRule].self,
+            forKey: .domainRules
+        ) ?? []
+        profiles = try values.decodeIfPresent(
+            [RoutingProfile].self,
+            forKey: .profiles
+        ) ?? []
+        activeProfileID = try values.decodeIfPresent(
+            UUID.self,
+            forKey: .activeProfileID
+        )
+        leases = try values.decodeIfPresent(
+            [RoutingLease].self,
+            forKey: .leases
+        ) ?? []
+
+        if let activeProfileID,
+           !profiles.contains(where: { $0.id == activeProfileID }) {
+            self.activeProfileID = nil
+        }
+    }
 }

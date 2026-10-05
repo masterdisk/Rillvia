@@ -11,12 +11,18 @@ enum BrowserRoutingState: Equatable, Sendable {
     case degraded(SmartRoutingIssue)
 }
 
+enum WorkspaceDestination: String, CaseIterable, Sendable {
+    case direct
+    case airlock
+    case rules
+    case profiles
+}
+
 @MainActor
 @Observable
 final class BrowserStore {
     var selectedID: String?
-    var selectedRouteID: String?
-    var selectedProfileID: String?
+    var workspaceDestination: WorkspaceDestination = .direct
     var showHall = false
 
     private(set) var browsers: [InstalledBrowser] = []
@@ -27,9 +33,14 @@ final class BrowserStore {
     private(set) var transactionStatus: HandlerTransactionStatus = .idle
     private(set) var handlerHealth: HTTPHandlerHealth
     private(set) var routingState: BrowserRoutingState = .direct
+    private(set) var airlockResult = AirlockParseResult(
+        items: [],
+        rejectedCandidateCount: 0,
+        wasTextTruncated: false,
+        wasURLLimitReached: false
+    )
     private(set) var revision = 0
     private(set) var installedCount = 0
-    private(set) var board = PreviewBoard.empty
     @ObservationIgnored
     var onRoutingAvailabilityChanged: (@MainActor () -> Void)?
 
@@ -45,6 +56,7 @@ final class BrowserStore {
     private let transactionCoordinator: HandlerTransactionCoordinator
     private let smartRoutingCoordinator: SmartRoutingCoordinator
     private let routingCoordinator: RoutingCoordinator
+    private let configurationEditor: RoutingConfigurationEditor
 
     private let quips: [(String) -> String] = [
         { "\($0) is already the default. The others can wait." },
@@ -76,6 +88,9 @@ final class BrowserStore {
             launcher: environment.urlLauncher,
             browserChange: browserChange
         )
+        self.configurationEditor = RoutingConfigurationEditor(
+            browserChange: browserChange
+        )
         self.handlerHealth = HTTPHandlerSnapshot.missing.health(
             browserChange: browserChange
         )
@@ -88,6 +103,16 @@ final class BrowserStore {
 
     var isSmartRoutingConfigured: Bool {
         smartRoutingCoordinator.configuration.mode == .smart
+    }
+
+    var routingConfiguration: RoutingConfiguration {
+        smartRoutingCoordinator.configuration
+    }
+
+    var externalBrowsers: [InstalledBrowser] {
+        switchable.filter {
+            !$0.isImaginary && $0.reference != browserChange
+        }
     }
 
     var routingModeTitle: String {
@@ -179,6 +204,30 @@ final class BrowserStore {
 
     func selectBrowser(_ id: String) {
         selectedID = id
+        workspaceDestination = .direct
+    }
+
+    func showWorkspace(_ destination: WorkspaceDestination) {
+        workspaceDestination = destination
+    }
+
+    func displayName(for browser: BrowserReference) -> String {
+        name(for: browser)
+    }
+
+    var hasClipboardWebURL: Bool {
+        clipboardAirlockItem != nil
+    }
+
+    @discardableResult
+    func stageClipboardURL() -> Bool {
+        guard let item = clipboardAirlockItem else {
+            message = "The clipboard does not contain a valid web link."
+            return false
+        }
+        stageAirlock(urls: [item.normalized.originalURL])
+        workspaceDestination = .airlock
+        return true
     }
 
     func tapTitle(at date: Date = .now) {
@@ -308,7 +357,8 @@ final class BrowserStore {
 
         let outcome = await routingCoordinator.route(
             url,
-            configuration: smartRoutingCoordinator.configuration
+            configuration: smartRoutingCoordinator.configuration,
+            availableTargets: availableBrowserReferences
         )
         switch outcome {
         case .opened:
@@ -336,6 +386,236 @@ final class BrowserStore {
         case .blocked:
             message = routingUnavailableMessage
             return .retryLater
+        }
+    }
+
+    func stageAirlock(text: String) {
+        airlockResult = AirlockParser().parse(text: text)
+        message = airlockResult.items.isEmpty
+            ? "No valid HTTP or HTTPS links were found."
+            : "\(airlockResult.items.count) link\(airlockResult.items.count == 1 ? "" : "s") ready to review."
+    }
+
+    func stageAirlock(urls: [URL]) {
+        airlockResult = AirlockParser().parse(urls: urls)
+        message = airlockResult.items.isEmpty
+            ? "No valid HTTP or HTTPS links were found."
+            : "\(airlockResult.items.count) link\(airlockResult.items.count == 1 ? "" : "s") ready to review."
+    }
+
+    func clearAirlock() {
+        airlockResult = AirlockParseResult(
+            items: [],
+            rejectedCandidateCount: 0,
+            wasTextTruncated: false,
+            wasURLLimitReached: false
+        )
+    }
+
+    func prediction(for item: AirlockItem) -> RoutingDecision? {
+        try? routingCoordinator.decision(
+            for: item.normalized.originalURL,
+            configuration: smartRoutingCoordinator.configuration,
+            availableTargets: availableBrowserReferences
+        )
+    }
+
+    func openAirlockNow(_ item: AirlockItem) async -> RoutingOutcome {
+        let outcome = await routingCoordinator.route(
+            item.normalized.originalURL,
+            configuration: smartRoutingCoordinator.configuration,
+            availableTargets: availableBrowserReferences
+        )
+        updateMessage(for: outcome)
+        return outcome
+    }
+
+    func openAirlock(
+        _ item: AirlockItem,
+        in browser: BrowserReference,
+        always scope: DomainRuleScope? = nil,
+        profileID: UUID? = nil
+    ) async -> RoutingOutcome {
+        let outcome = await routingCoordinator.route(
+            item.normalized.originalURL,
+            configuration: smartRoutingCoordinator.configuration,
+            explicitTarget: browser,
+            availableTargets: availableBrowserReferences
+        )
+        if case .opened(let openedBrowser) = outcome,
+           openedBrowser == browser,
+           let scope {
+            _ = createRule(
+                domain: item.normalized.host,
+                scope: scope,
+                browser: browser,
+                profileID: profileID,
+                source: .airlock
+            )
+        }
+        updateMessage(for: outcome)
+        return outcome
+    }
+
+    @discardableResult
+    func createRule(
+        domain: String,
+        scope: DomainRuleScope = .exactHost,
+        browser: BrowserReference,
+        profileID: UUID? = nil,
+        source: ConfigurationSource = .manual
+    ) -> DomainRule? {
+        var configuration = routingConfiguration
+        do {
+            let rule = try configurationEditor.createRule(
+                domain: domain,
+                scope: scope,
+                browser: browser,
+                profileID: profileID,
+                source: source,
+                in: &configuration
+            )
+            guard persist(configuration) else { return nil }
+            message = "Saved a rule for \(rule.domain)."
+            return rule
+        } catch {
+            message = configurationMessage(for: error)
+            return nil
+        }
+    }
+
+    @discardableResult
+    func updateRule(
+        _ ruleID: UUID,
+        domain: String,
+        scope: DomainRuleScope,
+        browser: BrowserReference,
+        profileID: UUID?,
+        isEnabled: Bool
+    ) -> Bool {
+        var configuration = routingConfiguration
+        do {
+            try configurationEditor.updateRule(
+                ruleID,
+                domain: domain,
+                scope: scope,
+                browser: browser,
+                profileID: profileID,
+                isEnabled: isEnabled,
+                in: &configuration
+            )
+            guard persist(configuration) else { return false }
+            message = "Updated the domain rule."
+            return true
+        } catch {
+            message = configurationMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func setRuleEnabled(_ ruleID: UUID, isEnabled: Bool) -> Bool {
+        var configuration = routingConfiguration
+        do {
+            try configurationEditor.setRuleEnabled(
+                ruleID,
+                isEnabled: isEnabled,
+                in: &configuration
+            )
+            guard persist(configuration) else { return false }
+            message = isEnabled ? "Enabled the domain rule." : "Disabled the domain rule."
+            return true
+        } catch {
+            message = configurationMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteRule(_ ruleID: UUID) -> Bool {
+        var configuration = routingConfiguration
+        do {
+            try configurationEditor.deleteRule(
+                ruleID,
+                in: &configuration
+            )
+            guard persist(configuration) else { return false }
+            message = "Deleted the domain rule."
+            return true
+        } catch {
+            message = configurationMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func createProfile(named name: String) -> RoutingProfile? {
+        var configuration = routingConfiguration
+        do {
+            let profile = try configurationEditor.createProfile(
+                named: name,
+                in: &configuration
+            )
+            guard persist(configuration) else { return nil }
+            message = "Created the \(profile.name) profile."
+            return profile
+        } catch {
+            message = configurationMessage(for: error)
+            return nil
+        }
+    }
+
+    @discardableResult
+    func renameProfile(_ profileID: UUID, to name: String) -> Bool {
+        var configuration = routingConfiguration
+        do {
+            try configurationEditor.renameProfile(
+                profileID,
+                to: name,
+                in: &configuration
+            )
+            guard persist(configuration) else { return false }
+            message = "Renamed the profile."
+            return true
+        } catch {
+            message = configurationMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func selectProfile(_ profileID: UUID?) -> Bool {
+        var configuration = routingConfiguration
+        do {
+            try configurationEditor.selectProfile(
+                profileID,
+                in: &configuration
+            )
+            guard persist(configuration) else { return false }
+            message = profileID == nil
+                ? "Using global rules only."
+                : "Selected the routing profile."
+            return true
+        } catch {
+            message = configurationMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteProfile(_ profileID: UUID) -> Bool {
+        var configuration = routingConfiguration
+        do {
+            try configurationEditor.deleteProfile(
+                profileID,
+                in: &configuration
+            )
+            guard persist(configuration) else { return false }
+            message = "Deleted the profile and its rules."
+            return true
+        } catch {
+            message = configurationMessage(for: error)
+            return false
         }
     }
 
@@ -457,6 +737,80 @@ final class BrowserStore {
         }
     }
 
+    private var availableBrowserReferences: Set<BrowserReference> {
+        Set(
+            installed
+                .filter {
+                    !$0.isImaginary && $0.reference != browserChange
+                }
+                .map(\.reference)
+        )
+    }
+
+    private var clipboardAirlockItem: AirlockItem? {
+        let pasteboard = NSPasteboard.general
+        if let value = pasteboard.string(forType: .URL),
+           let url = URL(string: value) {
+            return AirlockParser().parse(urls: [url]).items.first
+        }
+        if let value = pasteboard.string(forType: .string) {
+            return AirlockParser().parse(text: value).items.first
+        }
+        return nil
+    }
+
+    private func persist(_ configuration: RoutingConfiguration) -> Bool {
+        let outcome = smartRoutingCoordinator.applyConfiguration(
+            configuration
+        )
+        reload()
+        switch outcome {
+        case .succeeded:
+            return true
+        case .failed(let issue), .degraded(let issue):
+            message = smartRoutingMessage(for: issue)
+            return false
+        }
+    }
+
+    private func updateMessage(for outcome: RoutingOutcome) {
+        switch outcome {
+        case .opened(let browser):
+            message = "Opened the link in \(name(for: browser))."
+        case .rejected(.duplicateDispatch):
+            message = "BrowserChange stopped a repeated link dispatch."
+        case .rejected(.unsupportedURL):
+            message = "BrowserChange only routes HTTP and HTTPS links."
+        case .rejected(.selfTarget):
+            message = "BrowserChange cannot open a link in itself."
+        case .rejected:
+            message = "The link could not be opened."
+        case .blocked(.missingFallback):
+            message = smartRoutingMessage(for: .missingFallback)
+        case .blocked(.smartRoutingUnavailable):
+            message = routingUnavailableMessage
+        case .blocked:
+            message = "The selected browser could not open the link."
+        }
+    }
+
+    private func configurationMessage(for error: Error) -> String {
+        switch error as? RoutingConfigurationIssue {
+        case .selfTarget:
+            "BrowserChange cannot be a routing target."
+        case .invalidDomain:
+            "Enter a valid domain."
+        case .invalidName:
+            "Enter a profile name."
+        case .missingProfile:
+            "That profile is no longer available."
+        case .missingRule:
+            "That rule is no longer available."
+        case nil:
+            "BrowserChange could not update the routing configuration."
+        }
+    }
+
     private var routingUnavailableMessage: String {
         switch routingState {
         case .smartSuspended:
@@ -561,7 +915,7 @@ final class BrowserStore {
         name(for: application.browser)
     }
 
-    private func publish(now: Date = .now) {
+    private func publish() {
         installedCount = installed.count
         switchable = BrowserOrder.shelf(installed, defaultID: defaultBundleID)
         var display = installed
@@ -574,15 +928,6 @@ final class BrowserStore {
             self.selectedID = selectedID
         } else {
             selectedID = defaultBundleID ?? ordered.first?.id
-        }
-
-        let nextBoard = PreviewBoard.make(browsers: installed, defaultID: defaultBundleID, now: now)
-        board = nextBoard
-        if !nextBoard.routes.contains(where: { $0.id == selectedRouteID }) {
-            selectedRouteID = nextBoard.routes.first?.id
-        }
-        if !nextBoard.profiles.contains(where: { $0.id == selectedProfileID }) {
-            selectedProfileID = nextBoard.profiles.first { $0.suggestedNow }?.id ?? nextBoard.profiles.first?.id
         }
 
         icons = Dictionary(uniqueKeysWithValues: installed.map { browser in

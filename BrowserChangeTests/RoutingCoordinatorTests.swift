@@ -49,7 +49,10 @@ final class RoutingCoordinatorTests: XCTestCase {
             explicitTarget: chrome
         )
 
-        XCTAssertEqual(decision, RoutingDecision(target: chrome))
+        XCTAssertEqual(
+            decision,
+            RoutingDecision(target: chrome, reason: .explicitTarget)
+        )
     }
 
     func testEngineRejectsUnsupportedSchemeSelfTargetAndMissingFallback() {

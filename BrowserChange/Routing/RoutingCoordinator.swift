@@ -38,14 +38,16 @@ final class RoutingCoordinator {
     func route(
         _ url: URL,
         configuration: RoutingConfiguration,
-        explicitTarget: BrowserReference? = nil
+        explicitTarget: BrowserReference? = nil,
+        availableTargets: Set<BrowserReference>? = nil
     ) async -> RoutingOutcome {
         let decision: RoutingDecision
         do {
             decision = try engine.decision(
                 for: url,
                 configuration: configuration,
-                explicitTarget: explicitTarget
+                explicitTarget: explicitTarget,
+                availableTargets: availableTargets
             )
         } catch let issue as RoutingIssue {
             return disposition(for: issue)
@@ -73,6 +75,20 @@ final class RoutingCoordinator {
             recentDispatches[fingerprint] = nil
             return .blocked(.launchFailed)
         }
+    }
+
+    func decision(
+        for url: URL,
+        configuration: RoutingConfiguration,
+        explicitTarget: BrowserReference? = nil,
+        availableTargets: Set<BrowserReference>? = nil
+    ) throws -> RoutingDecision {
+        try engine.decision(
+            for: url,
+            configuration: configuration,
+            explicitTarget: explicitTarget,
+            availableTargets: availableTargets
+        )
     }
 
     private func disposition(for issue: RoutingIssue) -> RoutingOutcome {
