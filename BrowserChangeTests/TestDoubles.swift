@@ -22,7 +22,12 @@ final class FakeSystemBrowserHandler: SystemBrowserHandling {
     var handlers: HTTPHandlerSnapshot
     var applications: [BrowserReference: URL]
     var setError: Error?
+    var setErrorsByCall: [Int: Error] = [:]
+    var setErrorsAfterMutationByCall: [Int: Error] = [:]
     var openError: Error?
+    var ignoredSetCallIndices: Set<Int> = []
+    var beforeSet: ((SetCall, Int) -> Void)?
+    var afterSet: ((SetCall, Int) -> Void)?
     private(set) var setCalls: [SetCall] = []
     private(set) var openCalls: [(url: URL, browser: BrowserReference)] = []
 
@@ -46,17 +51,29 @@ final class FakeSystemBrowserHandler: SystemBrowserHandling {
         _ browser: BrowserReference,
         for scheme: WebScheme
     ) async throws {
+        let call = SetCall(browser: browser, scheme: scheme)
+        let callIndex = setCalls.count
+        setCalls.append(call)
+        beforeSet?(call, callIndex)
+        if let error = setErrorsByCall[callIndex] {
+            throw error
+        }
         if let setError {
             throw setError
         }
-        setCalls.append(.init(browser: browser, scheme: scheme))
         guard let applicationURL = applications[browser] else {
             throw SystemBrowserHandlerError.applicationNotFound(browser)
         }
-        handlers[scheme] = HandlerApplication(
-            browser: browser,
-            applicationURL: applicationURL
-        )
+        if !ignoredSetCallIndices.contains(callIndex) {
+            handlers[scheme] = HandlerApplication(
+                browser: browser,
+                applicationURL: applicationURL
+            )
+        }
+        afterSet?(call, callIndex)
+        if let error = setErrorsAfterMutationByCall[callIndex] {
+            throw error
+        }
     }
 
     func open(_ url: URL, with browser: BrowserReference) async throws {

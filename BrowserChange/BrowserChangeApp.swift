@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        store?.refresh()
+        Task { await store?.activate() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -75,6 +75,9 @@ private struct RootView: View {
                     openWindow(id: "main")
                     NSApp.activate()
                 }
+            }
+            .task {
+                await store.activate()
             }
     }
 }

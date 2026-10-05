@@ -35,6 +35,33 @@ struct MenuPanel: View {
             .padding(.horizontal, 8)
             .padding(.top, 4)
 
+            if store.hasSplitHandlers {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(
+                        "HTTP and HTTPS handlers are split",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+
+                    if let message = store.splitHandlerMessage {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let browser = store.selectedBrowserForRepair {
+                        Button("Repair handlers with \(browser.name)") {
+                            Task { await store.repairSelectedHandlers() }
+                        }
+                        .disabled(store.isSwitching)
+                    }
+                }
+                .padding(8)
+                .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+            }
+
             if store.switchable.count > 7 {
                 ScrollView {
                     rows
@@ -42,6 +69,21 @@ struct MenuPanel: View {
                 .frame(height: 380)
             } else {
                 rows
+            }
+
+            if store.canUndo {
+                Button {
+                    Task { await store.undoLastBrowserChange() }
+                } label: {
+                    Label(
+                        "Undo last browser change",
+                        systemImage: "arrow.uturn.backward"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .disabled(store.isSwitching)
+                .accessibilityIdentifier("menu-undo-browser-change")
             }
 
             if let message = store.message {

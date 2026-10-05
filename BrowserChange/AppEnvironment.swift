@@ -18,14 +18,14 @@ struct AppEnvironment {
     ) -> AppEnvironment {
         #if DEBUG
         if arguments.contains("--ui-testing") {
-            return uiTesting()
+            return uiTesting(arguments: arguments)
         }
         #endif
         return live()
     }
 
     #if DEBUG
-    private static func uiTesting() -> AppEnvironment {
+    private static func uiTesting(arguments: [String]) -> AppEnvironment {
         let safari = InstalledBrowser(
             id: "com.apple.Safari",
             name: "Safari",
@@ -42,8 +42,21 @@ struct AppEnvironment {
             browser: chrome.reference,
             applicationURL: chrome.appURL
         )
+        let safariHandler = HandlerApplication(
+            browser: safari.reference,
+            applicationURL: safari.appURL
+        )
+        let handlers: HTTPHandlerSnapshot
+        if arguments.contains("--ui-testing-split-handlers") {
+            handlers = HTTPHandlerSnapshot(
+                http: safariHandler,
+                https: chromeHandler
+            )
+        } else {
+            handlers = .same(chromeHandler)
+        }
         let handler = UITestSystemBrowserHandler(
-            handlers: .same(chromeHandler),
+            handlers: handlers,
             applications: [
                 safari.reference: safari.appURL,
                 chrome.reference: chrome.appURL,

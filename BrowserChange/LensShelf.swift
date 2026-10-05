@@ -78,6 +78,8 @@ struct BrowserWorkspace: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                HandlerTransactionControls()
+
                 if let browser = store.browsers.first(where: { $0.id == store.selectedID }) {
                     BrowserLens(browser: browser)
                         .id(browser.id)
@@ -95,6 +97,55 @@ struct BrowserWorkspace: View {
         }
         .scrollIndicators(.hidden)
         .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: store.selectedID)
+    }
+}
+
+private struct HandlerTransactionControls: View {
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if store.hasSplitHandlers {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(
+                        "HTTP and HTTPS handlers are split",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+
+                    if let message = store.splitHandlerMessage {
+                        Text(message)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("split-handler-warning")
+                    }
+
+                    if let browser = store.selectedBrowserForRepair {
+                        Button("Repair handlers with \(browser.name)") {
+                            Task { await store.repairSelectedHandlers() }
+                        }
+                        .disabled(store.isSwitching)
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.orange.opacity(0.24))
+                }
+            }
+
+            if store.canUndo {
+                Button("Undo last browser change", systemImage: "arrow.uturn.backward") {
+                    Task { await store.undoLastBrowserChange() }
+                }
+                .disabled(store.isSwitching)
+                .accessibilityIdentifier("undo-browser-change")
+            }
+        }
     }
 }
 
@@ -144,7 +195,11 @@ private struct BrowserLens: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Links currently open in \(store.defaultBrowserName).")
+                    Text(
+                        store.hasSplitHandlers
+                            ? "HTTP and HTTPS links currently open in different browsers."
+                            : "Links currently open in \(store.defaultBrowserName)."
+                    )
                         .font(.callout)
                         .foregroundStyle(.secondary)
 

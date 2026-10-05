@@ -74,6 +74,61 @@ final class BrowserChangeUITests: XCTestCase {
         add(screenshot)
     }
 
+    func testSplitHandlersCanBeRepairedWithTheSelectedBrowser() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+            "--ui-testing-split-handlers",
+        ]
+        app.launch()
+
+        let warning = app.staticTexts["split-handler-warning"]
+        XCTAssertTrue(
+            warning.waitForExistence(timeout: 4),
+            "A split HTTP/HTTPS state should be explained in the main workspace."
+        )
+
+        app.staticTexts["Safari"].firstMatch.click()
+        let repair = app.buttons["Repair handlers with Safari"]
+        XCTAssertTrue(repair.waitForExistence(timeout: 2))
+        repair.click()
+
+        XCTAssertTrue(
+            warning.waitForNonExistence(timeout: 2),
+            "Repair should leave both fake handlers on the selected browser."
+        )
+        XCTAssertTrue(
+            app.buttons["Undo last browser change"].waitForExistence(timeout: 2)
+        )
+    }
+
+    func testSuccessfulDirectSwitchCanBeUndoneFromTheMainWorkspace() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
+        app.launch()
+
+        app.staticTexts["Safari"].firstMatch.click()
+        let makeDefault = app.buttons["Make Safari the default"]
+        XCTAssertTrue(makeDefault.waitForExistence(timeout: 2))
+        makeDefault.click()
+
+        let undo = app.buttons["Undo last browser change"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 2))
+        undo.click()
+
+        XCTAssertTrue(
+            app.buttons["Make Safari the default"].waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(
+            app.staticTexts["Restored the previous web-link handlers."]
+                .waitForExistence(timeout: 2)
+        )
+    }
+
     private func sampledLuminance(of image: NSImage) -> CGFloat {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),

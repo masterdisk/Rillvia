@@ -16,25 +16,83 @@ struct HandlerUndoReceipt: Codable, Equatable, Sendable {
     var restore: HTTPHandlerSnapshot
 }
 
+enum HandlerOperationKind: String, Codable, Equatable, Sendable {
+    case direct
+    case undo
+}
+
 struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var startedAt: Date
+    var kind: HandlerOperationKind = .direct
     var desiredHandlers: HTTPHandlerSnapshot
     var undoReceipt: HandlerUndoReceipt
+    /// Schemes this operation actually changed and therefore owns for rollback.
+    var completedSchemes: [WebScheme] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case startedAt
+        case kind
+        case desiredHandlers
+        case undoReceipt
+        case completedSchemes
+    }
+
+    init(
+        id: UUID,
+        startedAt: Date,
+        kind: HandlerOperationKind = .direct,
+        desiredHandlers: HTTPHandlerSnapshot,
+        undoReceipt: HandlerUndoReceipt,
+        completedSchemes: [WebScheme] = []
+    ) {
+        self.id = id
+        self.startedAt = startedAt
+        self.kind = kind
+        self.desiredHandlers = desiredHandlers
+        self.undoReceipt = undoReceipt
+        self.completedSchemes = completedSchemes
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        startedAt = try values.decode(Date.self, forKey: .startedAt)
+        kind = try values.decodeIfPresent(
+            HandlerOperationKind.self,
+            forKey: .kind
+        ) ?? .direct
+        desiredHandlers = try values.decode(
+            HTTPHandlerSnapshot.self,
+            forKey: .desiredHandlers
+        )
+        undoReceipt = try values.decode(
+            HandlerUndoReceipt.self,
+            forKey: .undoReceipt
+        )
+        completedSchemes = try values.decodeIfPresent(
+            [WebScheme].self,
+            forKey: .completedSchemes
+        ) ?? []
+    }
 }
 
 struct HandlerOperationJournal: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int
     var pendingOperation: PendingHandlerOperation?
+    var undoReceipt: HandlerUndoReceipt?
 
     init(
         schemaVersion: Int = currentSchemaVersion,
-        pendingOperation: PendingHandlerOperation? = nil
+        pendingOperation: PendingHandlerOperation? = nil,
+        undoReceipt: HandlerUndoReceipt? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.pendingOperation = pendingOperation
+        self.undoReceipt = undoReceipt
     }
 
     static let fresh = HandlerOperationJournal()

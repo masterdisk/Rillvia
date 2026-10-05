@@ -72,3 +72,52 @@ enum HandlerOwnership: Codable, Equatable, Sendable {
     case split(http: HandlerApplication, https: HandlerApplication)
     case missing(http: HandlerApplication?, https: HandlerApplication?)
 }
+
+enum SchemeHandlerHealth: Equatable, Sendable {
+    case external(HandlerApplication)
+    case browserChange(HandlerApplication)
+    case missing
+}
+
+struct HTTPHandlerHealth: Equatable, Sendable {
+    var http: SchemeHandlerHealth
+    var https: SchemeHandlerHealth
+    var ownership: HandlerOwnership
+
+    var hasSplitHandlers: Bool {
+        if case .split = ownership {
+            return true
+        }
+        return false
+    }
+
+    var agreedExternalBrowser: BrowserReference? {
+        if case .external(let browser) = ownership {
+            return browser
+        }
+        return nil
+    }
+}
+
+extension HTTPHandlerSnapshot {
+    func health(browserChange: BrowserReference) -> HTTPHandlerHealth {
+        HTTPHandlerHealth(
+            http: schemeHealth(for: .http, browserChange: browserChange),
+            https: schemeHealth(for: .https, browserChange: browserChange),
+            ownership: ownership(browserChange: browserChange)
+        )
+    }
+
+    private func schemeHealth(
+        for scheme: WebScheme,
+        browserChange: BrowserReference
+    ) -> SchemeHandlerHealth {
+        guard let application = self[scheme] else {
+            return .missing
+        }
+        if application.browser == browserChange {
+            return .browserChange(application)
+        }
+        return .external(application)
+    }
+}
