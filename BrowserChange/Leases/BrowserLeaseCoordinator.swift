@@ -382,6 +382,24 @@ final class BrowserLeaseCoordinator {
         }
     }
 
+    func refreshConfiguration() {
+        do {
+            let current = try repository.loadConfiguration()
+            configuration = current
+            if let undoReceipt,
+               current != undoReceipt.precondition {
+                self.undoReceipt = nil
+            }
+            reschedule(
+                for: current.mode == .smart
+                    ? current.browserLease
+                    : nil
+            )
+        } catch {
+            undoReceipt = nil
+        }
+    }
+
     private func isAvailable(
         _ target: BrowserReference,
         availableTargets: Set<BrowserReference>?

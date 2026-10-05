@@ -78,6 +78,52 @@ final class BrowserStoreLeaseTests: XCTestCase {
         XCTAssertTrue(handler.setCalls.isEmpty)
     }
 
+    func testEveryConfigurationMutationWithdrawsStaleLeaseUndo() async throws {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        try saveSmartConfiguration()
+        let handler = makeHandler()
+        let store = makeStore(
+            handler: handler,
+            scheduler: StoreFakeBrowserLeaseScheduler(),
+            now: { now }
+        )
+        await store.activate()
+
+        XCTAssertTrue(
+            store.borrowBrowser(safari, for: .untilEnded)
+        )
+        XCTAssertTrue(store.canUndoLease)
+        XCTAssertNotNil(
+            store.createRule(
+                domain: "example.com",
+                browser: chrome.reference
+            )
+        )
+        XCTAssertFalse(store.canUndoLease)
+
+        XCTAssertTrue(
+            store.borrowBrowser(safari, for: .untilEnded)
+        )
+        XCTAssertTrue(store.canUndoLease)
+        XCTAssertNotNil(store.createProfile(named: "Work"))
+        XCTAssertFalse(store.canUndoLease)
+
+        XCTAssertTrue(
+            store.borrowBrowser(safari, for: .untilEnded)
+        )
+        XCTAssertTrue(store.canUndoLease)
+        XCTAssertTrue(store.setAutomationLeasesAllowed(true))
+        XCTAssertFalse(store.canUndoLease)
+
+        XCTAssertTrue(
+            store.borrowBrowser(safari, for: .untilEnded)
+        )
+        XCTAssertTrue(store.canUndoLease)
+        await store.makeDefault(safari)
+        XCTAssertFalse(store.canUndoLease)
+        XCTAssertTrue(handler.setCalls.isEmpty)
+    }
+
     func testIncomingURLReconcilesExactExpiryBeforeRoutingWithoutDroppingURL() async throws {
         var now = Date(timeIntervalSince1970: 1_900_000_000)
         try saveSmartConfiguration()

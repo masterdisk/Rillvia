@@ -28,6 +28,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) {
             NSApp.appearance = NSAppearance(named: .aqua)
         }
+        if ProcessInfo.processInfo.arguments.contains(
+            "--ui-testing-incoming-fallback"
+        ), let url = URL(
+            string: "https://unmatched.invalid/incoming"
+        ) {
+            incomingURLQueue.enqueue([url])
+        }
         #endif
     }
 

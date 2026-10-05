@@ -332,6 +332,90 @@ final class BrowserChangeUITests: XCTestCase {
         )
     }
 
+    func testConfigurationMutationWithdrawsStaleLeaseUndo() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
+        app.launch()
+
+        let enable = app.buttons[
+            "Turn on Smart Routing with Google Chrome"
+        ]
+        XCTAssertTrue(enable.waitForExistence(timeout: 4))
+        enable.click()
+
+        app.descendants(matching: .any)["Safari"].firstMatch.click()
+        let borrow = app.descendants(matching: .any)[
+            "borrow-browser-Safari"
+        ]
+        XCTAssertTrue(borrow.waitForExistence(timeout: 2))
+        borrow.click()
+        app.menuItems["15 minutes"].click()
+
+        let undo = app.buttons["undo-browser-lease"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 2))
+        let permission = app.checkBoxes[
+            "allow-automation-leases"
+        ]
+        XCTAssertTrue(permission.exists)
+        permission.click()
+
+        XCTAssertTrue(
+            undo.waitForNonExistence(timeout: 2),
+            "A later configuration mutation must withdraw stale lease Undo."
+        )
+    }
+
+    func testFakeTimedLeaseExpiryUpdatesUIAndRoutingWithoutWaiting() {
+        let app = launchTask7App(
+            extraArguments: [
+                "--ui-testing-lease-expiry-control",
+            ]
+        )
+        let activeTitle = app.descendants(matching: .any)[
+            "active-lease-title"
+        ]
+        XCTAssertTrue(activeTitle.waitForExistence(timeout: 4))
+
+        let expire = app.buttons["ui-test-expire-lease"]
+        XCTAssertTrue(expire.exists)
+        expire.click()
+
+        XCTAssertTrue(activeTitle.waitForNonExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["undo-browser-lease"].exists)
+        XCTAssertTrue(
+            app.staticTexts[
+                "The browser lease ended. Rules and the Google Chrome fallback are active again."
+            ].waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(
+            app.buttons[
+                "Turn off Smart Routing and make Google Chrome the Direct default"
+            ].exists
+        )
+
+        app.buttons["nav-airlock"].click()
+        let input = app.textViews["airlock-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
+        input.click()
+        input.typeText("https://unmatched.invalid/after-expiry")
+        app.buttons["airlock-preview"].click()
+        let prediction = app.staticTexts[
+            "airlock-predicted-browser"
+        ]
+        XCTAssertTrue(prediction.waitForExistence(timeout: 2))
+        XCTAssertEqual(accessibleText(of: prediction), "Google Chrome")
+        app.buttons["Open now"].click()
+        app.buttons["nav-direct"].click()
+        XCTAssertTrue(
+            app.staticTexts[
+                "Opened the link in Google Chrome."
+            ].waitForExistence(timeout: 2)
+        )
+    }
+
     func testMenuPanelExposesBorrowCountdownEndAndUndo() {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -604,6 +688,63 @@ final class BrowserChangeUITests: XCTestCase {
             accessibleText(of: error).contains(
                 "the “Always open” rule was not saved"
             )
+        )
+    }
+
+    func testDisappearedExplicitTargetKeepsChooserVisible() {
+        let app = launchTask7App(
+            extraArguments: [
+                "--ui-testing-explicit-target-unavailable",
+            ]
+        )
+
+        app.buttons["nav-airlock"].click()
+        let input = app.textViews["airlock-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
+        input.click()
+        input.typeText("https://example.com/target-gone")
+        app.buttons["airlock-preview"].click()
+        app.buttons["airlock-open-in"].click()
+        app.buttons["chooser-open-Safari"].click()
+
+        XCTAssertTrue(
+            app.staticTexts["browser-chooser-title"]
+                .waitForExistence(timeout: 2)
+        )
+        let error = app.staticTexts["chooser-error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 2))
+        XCTAssertTrue(
+            accessibleText(of: error).contains(
+                "no longer available"
+            )
+        )
+        XCTAssertTrue(
+            accessibleText(of: error).contains(
+                "choose another browser"
+            )
+        )
+    }
+
+    func testUnmatchedIncomingURLDispatchesToFallbackWithoutChooser() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+            "--ui-testing-routing-fixture",
+            "--ui-testing-incoming-fallback",
+            "--force-light-appearance",
+        ]
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts[
+                "Opened the incoming link in Google Chrome."
+            ].waitForExistence(timeout: 4)
+        )
+        XCTAssertTrue(app.staticTexts["Smart Routing"].exists)
+        XCTAssertFalse(
+            app.staticTexts["browser-chooser-title"].exists,
+            "Incoming URLs must dispatch without presenting the Airlock chooser."
         )
     }
 

@@ -130,6 +130,9 @@ private struct AirlockItemCard: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(store.displayName(for: decision.target))
                             .font(.body.weight(.medium))
+                            .accessibilityIdentifier(
+                                "airlock-predicted-browser"
+                            )
                         Text(decision.reason.summary)
                             .font(.caption)
                             .foregroundStyle(.secondary)

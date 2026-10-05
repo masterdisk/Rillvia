@@ -89,18 +89,26 @@ struct AppEnvironment {
             )
         } else if arguments.contains(
             "--ui-testing-task7-fixture"
+        ) || arguments.contains(
+            "--ui-testing-routing-fixture"
         ) {
             handlers = .same(browserChangeHandler)
         } else {
             handlers = .same(chromeHandler)
         }
+        var applications = [
+            safari.reference: safari.appURL,
+            chrome.reference: chrome.appURL,
+            browserChange: browserChangeURL,
+        ]
+        if arguments.contains(
+            "--ui-testing-explicit-target-unavailable"
+        ) {
+            applications[safari.reference] = nil
+        }
         let handler = UITestSystemBrowserHandler(
             handlers: handlers,
-            applications: [
-                safari.reference: safari.appURL,
-                chrome.reference: chrome.appURL,
-                browserChange: browserChangeURL,
-            ]
+            applications: applications
         )
         let stateDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -109,6 +117,10 @@ struct AppEnvironment {
             )
         let repository = StateRepository(baseDirectory: stateDirectory)
         let testNow = Date(timeIntervalSince1970: 1_900_000_000)
+        let testClock = UITestClock(now: testNow)
+        let leaseScheduler = UITestBrowserLeaseScheduler(
+            clock: testClock
+        )
         if arguments.contains("--ui-testing-task7-fixture") {
             let work = RoutingProfile(
                 id: UUID(
@@ -184,6 +196,15 @@ struct AppEnvironment {
                     )
                 )
             }
+        } else if arguments.contains(
+            "--ui-testing-routing-fixture"
+        ) {
+            try? repository.saveConfiguration(
+                RoutingConfiguration(
+                    mode: .smart,
+                    fallbackBrowser: chrome.reference
+                )
+            )
         } else if arguments.contains("--ui-testing-smart-suspended") {
             try? repository.saveConfiguration(
                 RoutingConfiguration(
@@ -198,13 +219,52 @@ struct AppEnvironment {
             systemBrowserHandler: handler,
             stateRepository: repository,
             urlLauncher: handler,
-            now: { testNow }
+            now: { testClock.now },
+            leaseScheduler: leaseScheduler
         )
     }
     #endif
 }
 
 #if DEBUG
+final class UITestClock {
+    var now: Date
+
+    init(now: Date) {
+        self.now = now
+    }
+}
+
+@MainActor
+final class UITestBrowserLeaseScheduler: BrowserLeaseScheduling {
+    private let clock: UITestClock
+    private var deadline: Date?
+    private var action: (() -> Void)?
+
+    init(clock: UITestClock) {
+        self.clock = clock
+    }
+
+    func schedule(at deadline: Date, action: @escaping () -> Void) {
+        self.deadline = deadline
+        self.action = action
+    }
+
+    func cancel() {
+        deadline = nil
+        action = nil
+    }
+
+    func fireAtDeadline() {
+        guard let deadline else { return }
+        let action = action
+        self.deadline = nil
+        self.action = nil
+        clock.now = deadline
+        action?()
+    }
+}
+
 private struct UITestBrowserCatalog: BrowserCatalog {
     var browsers: [InstalledBrowser]
 

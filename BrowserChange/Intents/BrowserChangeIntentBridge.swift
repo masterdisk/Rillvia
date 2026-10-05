@@ -206,6 +206,9 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
             throw BrowserChangeAutomationError.unsupportedURL
         case .rejected(.selfTarget):
             throw BrowserChangeAutomationError.selfTarget
+        case .rejected(.explicitTargetUnavailable),
+                .blocked(.explicitTargetUnavailable):
+            throw BrowserChangeAutomationError.browserUnavailable
         case .rejected(.duplicateDispatch):
             throw BrowserChangeAutomationError.duplicateDispatch
         case .rejected(.smartRoutingUnavailable),

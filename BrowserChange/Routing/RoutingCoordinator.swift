@@ -96,7 +96,8 @@ final class RoutingCoordinator {
 
     private func disposition(for issue: RoutingIssue) -> RoutingOutcome {
         switch issue {
-        case .unsupportedURL, .selfTarget, .duplicateDispatch:
+        case .unsupportedURL, .selfTarget, .explicitTargetUnavailable,
+                .duplicateDispatch:
             .rejected(issue)
         case .smartRoutingUnavailable, .missingFallback, .launchFailed:
             .blocked(issue)

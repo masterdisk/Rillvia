@@ -109,6 +109,36 @@ final class BrowserStoreTask7Tests: XCTestCase {
         )
     }
 
+    func testDisappearedExplicitTargetKeepsChooserOpenWithoutLaunching() async throws {
+        let catalog = FakeBrowserCatalog(
+            browsers: [chrome, safari]
+        )
+        let store = makeStore(catalog: catalog)
+        await store.activate()
+        store.stageAirlock(text: "https://example.com/target-gone")
+        let item = try XCTUnwrap(store.airlockResult.items.first)
+        catalog.browsers = [chrome]
+
+        let result = await store.openAirlockFromChooser(
+            item,
+            in: safari.reference
+        )
+
+        XCTAssertEqual(
+            result.routingOutcome,
+            .rejected(
+                .explicitTargetUnavailable(safari.reference)
+            )
+        )
+        XCTAssertFalse(result.shouldDismiss)
+        XCTAssertTrue(launcher.calls.isEmpty)
+        XCTAssertEqual(
+            result.errorMessage,
+            "The selected browser is no longer available. Reinstall it or choose another browser."
+        )
+        XCTAssertEqual(store.message, result.errorMessage)
+    }
+
     func testDiagnosticsUsesLiveStateButNeverIncludesAirlockURL() async {
         let store = makeStore()
         await store.activate()
@@ -421,6 +451,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
 
     private func makeStore(
         browsers: [InstalledBrowser]? = nil,
+        catalog: FakeBrowserCatalog? = nil,
         now: @escaping () -> Date = Date.init
     ) -> BrowserStore {
         let handler = FakeSystemBrowserHandler(
@@ -436,11 +467,12 @@ final class BrowserStoreTask7Tests: XCTestCase {
                 safari.reference: safari.appURL,
             ]
         )
+        let catalog = catalog ?? FakeBrowserCatalog(
+            browsers: browsers ?? [chrome, safari]
+        )
         return BrowserStore(
             environment: AppEnvironment(
-                browserCatalog: FakeBrowserCatalog(
-                    browsers: browsers ?? [chrome, safari]
-                ),
+                browserCatalog: catalog,
                 systemBrowserHandler: handler,
                 stateRepository: repository,
                 urlLauncher: launcher,

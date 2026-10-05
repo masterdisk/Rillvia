@@ -245,6 +245,104 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         XCTAssertEqual(history.entries.first?.configuration, desired)
     }
 
+    func testSmartTransitionFinalPersistenceFailureRollsBackImmediately() async throws {
+        let before = RoutingConfiguration(
+            mode: .direct,
+            fallbackBrowser: chrome.browser
+        )
+        let desired = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.browser
+        )
+        try repository.saveConfiguration(before)
+        let handler = makeHandler(handlers: .same(chrome))
+        handler.afterSet = { [directory] _, index in
+            guard index == 1, let directory else { return }
+            let historyURL = directory.appendingPathComponent(
+                "configuration-history.json"
+            )
+            try? Data(
+                #"{"schemaVersion":999,"entries":[]}"#.utf8
+            ).write(to: historyURL)
+        }
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.activateSmartRouting(
+            configuration: desired
+        )
+
+        XCTAssertEqual(outcome, .failed(.statePersistenceFailed))
+        XCTAssertEqual(handler.handlers, .same(chrome))
+        XCTAssertEqual(
+            handler.setCalls,
+            [
+                .init(browser: browserChange, scheme: .https),
+                .init(browser: browserChange, scheme: .http),
+                .init(browser: chrome.browser, scheme: .http),
+                .init(browser: chrome.browser, scheme: .https),
+            ]
+        )
+        XCTAssertEqual(try repository.loadConfiguration(), before)
+        XCTAssertNil(try repository.loadHandlerJournal().pendingOperation)
+    }
+
+    func testRestartRollsBackSmartTransitionWhenFinalPersistenceCannotComplete() async throws {
+        let before = RoutingConfiguration(
+            mode: .direct,
+            fallbackBrowser: chrome.browser
+        )
+        let desired = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.browser
+        )
+        try repository.saveConfiguration(before)
+        let pending = PendingHandlerOperation(
+            id: operationID,
+            startedAt: now,
+            kind: .smartActivation,
+            desiredHandlers: .same(browserChangeApplication),
+            undoReceipt: makeReceipt(
+                precondition: .same(browserChangeApplication),
+                restore: .same(chrome)
+            ),
+            completedSchemes: [.https, .http],
+            configurationBefore: before,
+            configurationOnSuccess: desired
+        )
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(pendingOperation: pending)
+        )
+        try Data(
+            #"{"schemaVersion":999,"entries":[]}"#.utf8
+        ).write(
+            to: directory.appendingPathComponent(
+                "configuration-history.json"
+            )
+        )
+        let handler = makeHandler(
+            handlers: .same(browserChangeApplication)
+        )
+        let coordinator = makeCoordinator(handler: handler)
+
+        let recovery = await coordinator.recoverPendingOperation()
+        let restartedRecovery = await makeCoordinator(
+            handler: handler
+        ).recoverPendingOperation()
+
+        XCTAssertEqual(recovery, .rolledBack)
+        XCTAssertEqual(restartedRecovery, .nothingPending)
+        XCTAssertEqual(handler.handlers, .same(chrome))
+        XCTAssertEqual(
+            handler.setCalls,
+            [
+                .init(browser: chrome.browser, scheme: .http),
+                .init(browser: chrome.browser, scheme: .https),
+            ]
+        )
+        XCTAssertEqual(try repository.loadConfiguration(), before)
+        XCTAssertNil(try repository.loadHandlerJournal().pendingOperation)
+    }
+
     func testRecoveryRecordsSuccessfulSmartConfigurationHistory() async throws {
         let before = RoutingConfiguration(
             mode: .direct,

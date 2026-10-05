@@ -123,6 +123,37 @@ final class SmartRoutingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.status, .direct)
     }
 
+    func testActivationPreflightsFutureHistoryBeforeMutatingHandlers() async throws {
+        let historyURL = directory.appendingPathComponent(
+            "configuration-history.json"
+        )
+        let futureHistory = Data(
+            #"{"schemaVersion":999,"entries":[]}"#.utf8
+        )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        try futureHistory.write(to: historyURL)
+        let handler = makeHandler(handlers: .same(chrome))
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.enable(
+            fallback: chrome.browser
+        )
+
+        XCTAssertEqual(
+            outcome,
+            .failed(.handlerTransaction(.statePersistenceFailed))
+        )
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        XCTAssertEqual(handler.handlers, .same(chrome))
+        XCTAssertEqual(try repository.loadConfiguration(), .fresh)
+        XCTAssertEqual(try Data(contentsOf: historyURL), futureHistory)
+        XCTAssertEqual(try repository.loadHandlerJournal(), .fresh)
+        XCTAssertEqual(coordinator.status, .direct)
+    }
+
     func testActivationRejectsMissingAndSelfFallbackWithoutMutation() async {
         let missingHandler = makeHandler(handlers: .missing)
         let missingCoordinator = makeCoordinator(handler: missingHandler)

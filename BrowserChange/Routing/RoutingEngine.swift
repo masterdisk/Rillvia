@@ -47,6 +47,7 @@ enum RoutingIssue: Error, Equatable, Sendable {
     case smartRoutingUnavailable
     case missingFallback
     case selfTarget
+    case explicitTargetUnavailable(BrowserReference)
     case duplicateDispatch
     case launchFailed
 }
@@ -84,7 +85,13 @@ struct RoutingEngine {
             return availableTargets?.contains(target) ?? true
         }
 
-        if let explicitTarget, usable(explicitTarget) {
+        if let explicitTarget {
+            guard explicitTarget != browserChange,
+                  availableTargets?.contains(explicitTarget) ?? true else {
+                throw RoutingIssue.explicitTargetUnavailable(
+                    explicitTarget
+                )
+            }
             return RoutingDecision(
                 target: explicitTarget,
                 reason: .explicitTarget

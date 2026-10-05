@@ -31,6 +31,23 @@ struct ContentView: View {
                 }
                 .help("Look for installed browsers again")
             }
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains(
+                "--ui-testing-lease-expiry-control"
+            ) {
+                ToolbarItem {
+                    Button(
+                        "Expire test lease",
+                        systemImage: "clock.arrow.circlepath"
+                    ) {
+                        store.expireUITestLease()
+                    }
+                    .accessibilityIdentifier(
+                        "ui-test-expire-lease"
+                    )
+                }
+            }
+            #endif
         }
         .sheet(isPresented: $store.showHall) {
             HallOfFameView(model: store.livingHallModel)

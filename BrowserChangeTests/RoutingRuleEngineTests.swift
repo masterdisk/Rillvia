@@ -160,6 +160,66 @@ final class RoutingRuleEngineTests: XCTestCase {
         XCTAssertEqual(routed.target, firefox)
     }
 
+    func testUnavailableExplicitTargetNeverFallsThroughToOtherRoutingLayers() throws {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        let configuration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: safari,
+            domainRules: [
+                DomainRule(domain: "example.com", browser: chrome),
+            ],
+            browserLease: BrowserLease(
+                browser: chrome,
+                startedAt: now,
+                expiresAt: nil
+            )
+        )
+
+        XCTAssertThrowsError(
+            try RoutingEngine(
+                browserChange: browserChange,
+                now: { now }
+            ).decision(
+                for: XCTUnwrap(
+                    URL(string: "https://example.com/strict")
+                ),
+                configuration: configuration,
+                explicitTarget: firefox,
+                availableTargets: [safari, chrome]
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? RoutingIssue,
+                .explicitTargetUnavailable(firefox)
+            )
+        }
+    }
+
+    func testSelfExplicitTargetNeverFallsThroughToFallback() throws {
+        let configuration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: safari
+        )
+
+        XCTAssertThrowsError(
+            try RoutingEngine(
+                browserChange: browserChange
+            ).decision(
+                for: XCTUnwrap(
+                    URL(string: "https://example.com/self")
+                ),
+                configuration: configuration,
+                explicitTarget: browserChange,
+                availableTargets: [safari]
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? RoutingIssue,
+                .explicitTargetUnavailable(browserChange)
+            )
+        }
+    }
+
     func testExpiredAndUnavailableLeasesFallThroughAtTheExactBoundary() throws {
         let now = Date(timeIntervalSince1970: 1_900_000_000)
         let url = try XCTUnwrap(URL(string: "https://example.com"))

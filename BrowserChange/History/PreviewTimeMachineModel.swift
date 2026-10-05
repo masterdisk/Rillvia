@@ -324,6 +324,8 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
             "No currently installed browser can handle this snapshot."
         case .selfTarget:
             "This snapshot points back to BrowserChange and cannot be evaluated."
+        case .explicitTargetUnavailable:
+            "The selected browser is no longer available."
         case .duplicateDispatch, .launchFailed:
             "This historical configuration cannot route that URL."
         }

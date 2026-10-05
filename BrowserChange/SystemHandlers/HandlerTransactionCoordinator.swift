@@ -122,6 +122,18 @@ final class HandlerTransactionCoordinator {
             return .degraded(issue)
         }
 
+        let configurationBefore: RoutingConfiguration?
+        do {
+            if configurationOnSuccess != nil {
+                configurationBefore = try repository.loadConfiguration()
+                _ = try repository.loadConfigurationHistory()
+            } else {
+                configurationBefore = nil
+            }
+        } catch {
+            return .failed(.statePersistenceFailed)
+        }
+
         let baseline = systemHandler.currentHandlers()
         guard (permitsBrowserChange || browser != browserChange),
               let applicationURL = systemHandler.applicationURL(for: browser)
@@ -153,17 +165,11 @@ final class HandlerTransactionCoordinator {
             kind: kind,
             desiredHandlers: desired,
             undoReceipt: receipt,
-            configurationBefore: configurationOnSuccess == nil
-                ? nil
-                : (try? repository.loadConfiguration()),
+            configurationBefore: configurationBefore,
             configurationOnSuccess: configurationOnSuccess
         )
 
         do {
-            if configurationOnSuccess != nil,
-               operation.configurationBefore == nil {
-                return .failed(.statePersistenceFailed)
-            }
             var journal = try loadJournal()
             journal.pendingOperation = operation
             try repository.saveHandlerJournal(journal)
@@ -235,10 +241,24 @@ final class HandlerTransactionCoordinator {
                 systemHandler.currentHandlers(),
                 operation.desiredHandlers
             ) {
-                try complete(operation: operation, journal: &journal)
-                return operation.kind == .undo
-                    ? .completedUndo
-                    : .completedSwitch
+                do {
+                    try complete(operation: operation, journal: &journal)
+                    return operation.kind == .undo
+                        ? .completedUndo
+                        : .completedSwitch
+                } catch {
+                    switch await reconcile(
+                        operation: operation,
+                        journal: &journal
+                    ) {
+                    case .restored:
+                        return .rolledBack
+                    case .externalChange:
+                        return .degraded(.handlersChangedExternally)
+                    case .failed:
+                        return .degraded(.rollbackFailed)
+                    }
+                }
             }
 
             switch await reconcile(operation: operation, journal: &journal) {
@@ -369,7 +389,11 @@ final class HandlerTransactionCoordinator {
             try complete(operation: operation, journal: &journal)
             return .succeeded
         } catch {
-            return .degraded(.statePersistenceFailed)
+            return await fail(
+                .statePersistenceFailed,
+                operation: operation,
+                journal: &journal
+            )
         }
     }
 

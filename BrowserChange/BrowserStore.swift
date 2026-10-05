@@ -527,6 +527,13 @@ final class BrowserStore {
         }
     }
 
+    #if DEBUG
+    func expireUITestLease() {
+        (environment.leaseScheduler as? UITestBrowserLeaseScheduler)?
+            .fireAtDeadline()
+    }
+    #endif
+
     @discardableResult
     func setAutomationLeasesAllowed(_ isAllowed: Bool) -> Bool {
         do {
@@ -559,7 +566,10 @@ final class BrowserStore {
             availableTargets: availableBrowserReferences
         )
         switch outcome {
-        case .opened:
+        case .opened(let browser):
+            if message == nil {
+                message = "Opened the incoming link in \(name(for: browser))."
+            }
             return .consumed
         case .rejected(.unsupportedURL):
             message = "BrowserChange only routes HTTP and HTTPS links."
@@ -990,6 +1000,8 @@ final class BrowserStore {
             installed
                 .filter {
                     !$0.isImaginary && $0.reference != browserChange
+                        && environment.systemBrowserHandler
+                            .applicationURL(for: $0.reference) != nil
                 }
                 .map(\.reference)
         )
@@ -1031,6 +1043,8 @@ final class BrowserStore {
             message = "BrowserChange only routes HTTP and HTTPS links."
         case .rejected(.selfTarget):
             message = "BrowserChange cannot open a link in itself."
+        case .rejected(.explicitTargetUnavailable):
+            message = "The selected browser is no longer available. Reinstall it or choose another browser."
         case .rejected:
             message = "The link could not be opened."
         case .blocked(.missingFallback):
@@ -1171,11 +1185,18 @@ final class BrowserStore {
         installed = environment.browserCatalog.installedBrowsers()
         let handlers = environment.systemBrowserHandler.currentHandlers()
         handlerHealth = handlers.health(browserChange: browserChange)
-        let leaseReconciliation = reconcilingLease
-            ? browserLeaseCoordinator.reconcile(
+        let leaseReconciliation: BrowserLeaseReconciliation
+        if reconcilingLease {
+            leaseReconciliation = browserLeaseCoordinator.reconcile(
                 availableTargets: availableBrowserReferences
             )
-            : BrowserLeaseReconciliation(didExpire: false, issue: nil)
+        } else {
+            browserLeaseCoordinator.refreshConfiguration()
+            leaseReconciliation = BrowserLeaseReconciliation(
+                didExpire: false,
+                issue: nil
+            )
+        }
         let smartStatus = smartRoutingCoordinator.refreshOwnership()
         switch smartStatus {
         case .direct:
