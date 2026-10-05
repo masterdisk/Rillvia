@@ -180,30 +180,35 @@ struct RoutingProfile: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-struct RoutingLease: Codable, Equatable, Identifiable, Sendable {
+struct BrowserLease: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var revision: Int
-    var domain: String
     var browser: BrowserReference
-    var expiresAt: Date
+    var startedAt: Date
+    var expiresAt: Date?
 
     init(
         id: UUID = UUID(),
         revision: Int = 1,
-        domain: String,
         browser: BrowserReference,
-        expiresAt: Date
+        startedAt: Date,
+        expiresAt: Date?
     ) {
         self.id = id
         self.revision = revision
-        self.domain = domain
         self.browser = browser
+        self.startedAt = startedAt
         self.expiresAt = expiresAt
+    }
+
+    func isActive(at date: Date) -> Bool {
+        guard date >= startedAt else { return false }
+        return expiresAt.map { date < $0 } ?? true
     }
 }
 
 struct RoutingConfiguration: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int
     var mode: RoutingMode
@@ -211,7 +216,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
     var domainRules: [DomainRule]
     var profiles: [RoutingProfile]
     var activeProfileID: UUID?
-    var leases: [RoutingLease]
+    var browserLease: BrowserLease?
 
     init(
         schemaVersion: Int = currentSchemaVersion,
@@ -220,7 +225,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         domainRules: [DomainRule] = [],
         profiles: [RoutingProfile] = [],
         activeProfileID: UUID? = nil,
-        leases: [RoutingLease] = []
+        browserLease: BrowserLease? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.mode = mode
@@ -228,7 +233,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         self.domainRules = domainRules
         self.profiles = profiles
         self.activeProfileID = activeProfileID
-        self.leases = leases
+        self.browserLease = browserLease
     }
 
     static let fresh = RoutingConfiguration()
@@ -240,7 +245,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         case domainRules
         case profiles
         case activeProfileID
-        case leases
+        case browserLease
     }
 
     init(from decoder: Decoder) throws {
@@ -266,10 +271,10 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
             UUID.self,
             forKey: .activeProfileID
         )
-        leases = try values.decodeIfPresent(
-            [RoutingLease].self,
-            forKey: .leases
-        ) ?? []
+        browserLease = try values.decodeIfPresent(
+            BrowserLease.self,
+            forKey: .browserLease
+        )
 
         if let activeProfileID,
            !profiles.contains(where: { $0.id == activeProfileID }) {

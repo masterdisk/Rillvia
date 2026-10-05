@@ -244,6 +244,121 @@ final class BrowserChangeUITests: XCTestCase {
         )
     }
 
+    func testSmartBrowserLeaseCanStartEndAndUndoFromMainWindow() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
+        app.launch()
+
+        let enable = app.buttons[
+            "Turn on Smart Routing with Google Chrome"
+        ]
+        XCTAssertTrue(enable.waitForExistence(timeout: 4))
+        enable.click()
+
+        app.descendants(matching: .any)["Safari"].firstMatch.click()
+        let borrow = app.descendants(matching: .any)[
+            "borrow-browser-Safari"
+        ]
+        XCTAssertTrue(
+            borrow.waitForExistence(timeout: 2),
+            "Smart Routing should expose Borrow for the selected browser."
+        )
+        borrow.click()
+        let fifteenMinutes = app.menuItems["15 minutes"]
+        XCTAssertTrue(fifteenMinutes.waitForExistence(timeout: 2))
+        fifteenMinutes.click()
+
+        let activeTitle = app.descendants(matching: .any)[
+            "active-lease-title"
+        ]
+        XCTAssertTrue(
+            activeTitle.waitForExistence(timeout: 2)
+        )
+        let remaining = app.descendants(matching: .any)[
+            "active-lease-remaining"
+        ]
+        XCTAssertTrue(remaining.exists)
+        XCTAssertEqual(remaining.value as? String, "15:00 remaining")
+        let end = app.buttons["end-browser-lease"]
+        XCTAssertTrue(end.exists)
+        XCTAssertTrue(app.buttons["undo-browser-lease"].exists)
+
+        end.click()
+
+        XCTAssertTrue(
+            activeTitle.waitForNonExistence(timeout: 2)
+        )
+        let undo = app.buttons["undo-browser-lease"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 2))
+        undo.click()
+        XCTAssertTrue(
+            activeTitle.waitForExistence(timeout: 2)
+        )
+    }
+
+    func testMenuPanelExposesBorrowCountdownEndAndUndo() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
+        app.launch()
+
+        let enable = app.buttons[
+            "Turn on Smart Routing with Google Chrome"
+        ]
+        XCTAssertTrue(enable.waitForExistence(timeout: 4))
+        enable.click()
+
+        let statusItem = app.statusItems[
+            "BrowserChange, Google Chrome"
+        ]
+        XCTAssertTrue(statusItem.waitForExistence(timeout: 2))
+        statusItem.click()
+
+        let borrow = app.descendants(matching: .any)[
+            "menu-borrow-browser"
+        ]
+        XCTAssertTrue(
+            borrow.waitForExistence(timeout: 2),
+            "The menu panel should expose Borrow only in active Smart mode."
+        )
+        borrow.click()
+        let safariFifteen = app.menuItems[
+            "Borrow Safari for 15 minutes"
+        ]
+        XCTAssertTrue(safariFifteen.waitForExistence(timeout: 2))
+        safariFifteen.click()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "menu-active-lease-title"
+            ].waitForExistence(timeout: 2)
+        )
+        let remaining = app.descendants(matching: .any)[
+            "menu-active-lease-remaining"
+        ]
+        XCTAssertTrue(remaining.exists)
+        XCTAssertEqual(remaining.value as? String, "15:00 remaining")
+        let end = app.buttons["menu-end-browser-lease"]
+        XCTAssertTrue(end.exists)
+        XCTAssertTrue(app.buttons["menu-undo-browser-lease"].exists)
+
+        end.click()
+
+        let undo = app.buttons["menu-undo-browser-lease"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 2))
+        undo.click()
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "menu-active-lease-title"
+            ].waitForExistence(timeout: 2)
+        )
+    }
+
     private func sampledLuminance(of image: NSImage) -> CGFloat {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),

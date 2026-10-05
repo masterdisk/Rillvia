@@ -137,6 +137,36 @@ final class RoutingCoordinatorTests: XCTestCase {
         XCTAssertEqual(outcome, .blocked(.launchFailed))
         XCTAssertEqual(launcher.calls.count, 1)
     }
+
+    func testCoordinatorUsesInjectedClockForLeaseBoundary() async {
+        let launcher = RecordingURLLauncher()
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        let coordinator = RoutingCoordinator(
+            launcher: launcher,
+            browserChange: browserChange,
+            now: { now }
+        )
+        let configuration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: safari,
+            browserLease: BrowserLease(
+                browser: chrome,
+                startedAt: now.addingTimeInterval(-900),
+                expiresAt: now
+            )
+        )
+
+        let outcome = await coordinator.route(
+            webURL,
+            configuration: configuration
+        )
+
+        XCTAssertEqual(outcome, .opened(safari))
+        XCTAssertEqual(
+            launcher.calls,
+            [.init(url: webURL, browser: safari)]
+        )
+    }
 }
 
 @MainActor

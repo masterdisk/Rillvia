@@ -171,6 +171,11 @@ private struct DirectWorkspace: View {
 
                 RoutingModeCard()
 
+                if store.activeBrowserLease != nil
+                    || store.canUndoLease {
+                    BrowserLeaseCard()
+                }
+
                 HandlerTransactionControls()
 
                 if let browser = store.browsers.first(where: { $0.id == store.selectedID }) {
@@ -190,6 +195,75 @@ private struct DirectWorkspace: View {
         }
         .scrollIndicators(.hidden)
         .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: store.selectedID)
+    }
+}
+
+private struct BrowserLeaseCard: View {
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let lease = store.activeBrowserLease {
+                Label(
+                    "Borrowing \(store.displayName(for: lease.browser))",
+                    systemImage: "clock.arrow.trianglehead.2.counterclockwise.rotate.90"
+                )
+                .font(.headline)
+                .accessibilityIdentifier("active-lease-title")
+
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(store.activeLeaseRemainingText ?? "")
+                        .font(.title3.monospacedDigit())
+                        .accessibilityIdentifier(
+                            "active-lease-remaining"
+                        )
+                }
+
+                Text(
+                    "This temporary override leaves your permanent fallback and domain rules unchanged."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+                Button(
+                    "End Lease",
+                    systemImage: "stop.circle"
+                ) {
+                    store.endBrowserLease()
+                }
+                .accessibilityLabel("End browser lease")
+                .accessibilityIdentifier("end-browser-lease")
+            } else {
+                Text(
+                    "The temporary browser override has ended. Your permanent fallback and domain rules are active."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if store.canUndoLease {
+                Button(
+                    "Undo lease change",
+                    systemImage: "arrow.uturn.backward"
+                ) {
+                    store.undoBrowserLeaseChange()
+                }
+                .accessibilityLabel("Undo browser lease change")
+                .accessibilityIdentifier("undo-browser-lease")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color.indigo.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.indigo.opacity(0.2))
+        }
     }
 }
 
@@ -436,6 +510,29 @@ private struct BrowserLens: View {
                     .controlSize(.large)
                     .disabled(store.isSwitching)
                     .keyboardShortcut(.defaultAction)
+                }
+
+                if store.isSmartRoutingActive && !browser.isImaginary {
+                    Menu {
+                        ForEach(BrowserLeasePreset.allCases) { preset in
+                            Button(preset.title) {
+                                store.borrowBrowser(
+                                    browser,
+                                    for: preset
+                                )
+                            }
+                        }
+                    } label: {
+                        Label(
+                            "Borrow \(browser.name)",
+                            systemImage: "clock.badge.checkmark"
+                        )
+                    }
+                    .controlSize(.large)
+                    .accessibilityLabel("Borrow \(browser.name)")
+                    .accessibilityIdentifier(
+                        "borrow-browser-\(browser.name)"
+                    )
                 }
 
                 Text(store.message ?? " ")

@@ -220,6 +220,47 @@ final class SmartRoutingCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.status, .active(safari.browser))
     }
 
+    func testSmartModeTransitionsNeverCarryAStaleBrowserLease() async throws {
+        let lease = BrowserLease(
+            browser: safari.browser,
+            startedAt: Date(timeIntervalSince1970: 1_900_000_000),
+            expiresAt: nil
+        )
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.browser,
+                browserLease: lease
+            )
+        )
+        let handler = makeHandler(handlers: .same(browserChange))
+        let coordinator = makeCoordinator(handler: handler)
+        _ = await coordinator.reconcile()
+
+        let disableOutcome = await coordinator.disable()
+        XCTAssertEqual(disableOutcome, .succeeded)
+        XCTAssertNil(
+            try repository.loadConfiguration().browserLease,
+            "Leaving Smart Routing must discard its temporary override."
+        )
+
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .direct,
+                fallbackBrowser: chrome.browser,
+                browserLease: lease
+            )
+        )
+        let enableOutcome = await coordinator.enable(
+            fallback: chrome.browser
+        )
+        XCTAssertEqual(enableOutcome, .succeeded)
+        XCTAssertNil(
+            try repository.loadConfiguration().browserLease,
+            "Entering Smart Routing must not reactivate stale state."
+        )
+    }
+
     func testRecoveryCommitsSmartConfigurationOnlyAfterDesiredHandlersVerify() async throws {
         let desiredConfiguration = RoutingConfiguration(
             mode: .smart,

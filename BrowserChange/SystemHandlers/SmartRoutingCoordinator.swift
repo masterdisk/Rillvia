@@ -99,6 +99,7 @@ final class SmartRoutingCoordinator {
             RoutingConfiguration.currentSchemaVersion
         desiredConfiguration.mode = .smart
         desiredConfiguration.fallbackBrowser = fallback
+        desiredConfiguration.browserLease = nil
 
         let outcome = await transactionCoordinator.activateSmartRouting(
             configuration: desiredConfiguration
@@ -128,6 +129,7 @@ final class SmartRoutingCoordinator {
         desiredConfiguration.schemaVersion =
             RoutingConfiguration.currentSchemaVersion
         desiredConfiguration.mode = .direct
+        desiredConfiguration.browserLease = nil
 
         let outcome = await transactionCoordinator.deactivateSmartRouting(
             to: fallback,
@@ -190,6 +192,12 @@ final class SmartRoutingCoordinator {
 
     @discardableResult
     func refreshOwnership() -> SmartRoutingStatus {
+        do {
+            configuration = try repository.loadConfiguration()
+        } catch {
+            status = .degraded(.configurationPersistenceFailed)
+            return status
+        }
         status = reconciledStatus()
         return status
     }

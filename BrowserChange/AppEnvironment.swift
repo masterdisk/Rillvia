@@ -5,19 +5,28 @@ struct AppEnvironment {
     var systemBrowserHandler: any SystemBrowserHandling
     var stateRepository: StateRepository
     var urlLauncher: any ExternalURLLaunching
+    var now: () -> Date
+    var leaseScheduler: any BrowserLeaseScheduling
 
+    @MainActor
     init(
         browserCatalog: any BrowserCatalog,
         systemBrowserHandler: any SystemBrowserHandling,
         stateRepository: StateRepository,
-        urlLauncher: (any ExternalURLLaunching)? = nil
+        urlLauncher: (any ExternalURLLaunching)? = nil,
+        now: @escaping () -> Date = Date.init,
+        leaseScheduler: (any BrowserLeaseScheduling)? = nil
     ) {
         self.browserCatalog = browserCatalog
         self.systemBrowserHandler = systemBrowserHandler
         self.stateRepository = stateRepository
         self.urlLauncher = urlLauncher ?? systemBrowserHandler
+        self.now = now
+        self.leaseScheduler = leaseScheduler
+            ?? LeaseScheduler(now: now)
     }
 
+    @MainActor
     static func live() -> AppEnvironment {
         let systemHandler = SystemBrowserHandler()
         return AppEnvironment(
@@ -28,6 +37,7 @@ struct AppEnvironment {
         )
     }
 
+    @MainActor
     static func bootstrap(
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> AppEnvironment {
@@ -40,6 +50,7 @@ struct AppEnvironment {
     }
 
     #if DEBUG
+    @MainActor
     private static func uiTesting(arguments: [String]) -> AppEnvironment {
         let safari = InstalledBrowser(
             id: "com.apple.Safari",
@@ -98,11 +109,13 @@ struct AppEnvironment {
             )
         }
 
+        let testNow = Date(timeIntervalSince1970: 1_900_000_000)
         return AppEnvironment(
             browserCatalog: UITestBrowserCatalog(browsers: [safari, chrome]),
             systemBrowserHandler: handler,
             stateRepository: repository,
-            urlLauncher: handler
+            urlLauncher: handler,
+            now: { testNow }
         )
     }
     #endif

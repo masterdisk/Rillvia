@@ -30,7 +30,10 @@ final class RoutingCoordinator {
         duplicateInterval: TimeInterval = 2
     ) {
         self.launcher = launcher
-        self.engine = RoutingEngine(browserChange: browserChange)
+        self.engine = RoutingEngine(
+            browserChange: browserChange,
+            now: now
+        )
         self.now = now
         self.duplicateInterval = duplicateInterval
     }

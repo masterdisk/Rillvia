@@ -105,6 +105,42 @@ struct MenuPanel: View {
                 .disabled(store.isSwitching)
             }
 
+            if store.activeBrowserLease != nil || store.canUndoLease {
+                MenuLeaseControls()
+            }
+
+            if store.isSmartRoutingActive {
+                Menu {
+                    ForEach(store.borrowableBrowsers) { browser in
+                        ForEach(BrowserLeasePreset.allCases) { preset in
+                            Button(
+                                preset.actionTitle(
+                                    browserName: browser.name
+                                )
+                            ) {
+                                store.borrowBrowser(
+                                    browser,
+                                    for: preset
+                                )
+                            }
+                        }
+                        if browser.id
+                            != store.borrowableBrowsers.last?.id {
+                            Divider()
+                        }
+                    }
+                } label: {
+                    Label(
+                        "Borrow a browser",
+                        systemImage: "clock.badge.checkmark"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .accessibilityLabel("Borrow a browser temporarily")
+                .accessibilityIdentifier("menu-borrow-browser")
+            }
+
             if store.hasClipboardWebURL {
                 Button {
                     guard store.stageClipboardURL() else { return }
@@ -176,6 +212,58 @@ struct MenuPanel: View {
                 BrowserMenuRow(browser: browser)
             }
         }
+    }
+}
+
+private struct MenuLeaseControls: View {
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let lease = store.activeBrowserLease {
+                Text(
+                    "Borrowing \(store.displayName(for: lease.browser))"
+                )
+                .font(.caption.weight(.semibold))
+                .accessibilityIdentifier("menu-active-lease-title")
+
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(store.activeLeaseRemainingText ?? "")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier(
+                            "menu-active-lease-remaining"
+                        )
+                }
+
+                Text("Fallback and rules stay unchanged.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Button("End Lease", systemImage: "stop.circle") {
+                    store.endBrowserLease()
+                }
+                .accessibilityLabel("End browser lease")
+                .accessibilityIdentifier("menu-end-browser-lease")
+            }
+
+            if store.canUndoLease {
+                Button(
+                    "Undo lease change",
+                    systemImage: "arrow.uturn.backward"
+                ) {
+                    store.undoBrowserLeaseChange()
+                }
+                .accessibilityLabel("Undo browser lease change")
+                .accessibilityIdentifier("menu-undo-browser-lease")
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color.indigo.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
     }
 }
 

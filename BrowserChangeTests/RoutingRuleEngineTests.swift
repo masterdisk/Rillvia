@@ -121,22 +121,24 @@ final class RoutingRuleEngineTests: XCTestCase {
         )
     }
 
-    func testExplicitTargetBeatsRulesAndLeasesDoNotAffectThisStage() throws {
+    func testExplicitTargetBeatsGlobalLeaseAndLeaseBeatsRules() throws {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
         let configuration = RoutingConfiguration(
             mode: .smart,
             fallbackBrowser: safari,
             domainRules: [
                 DomainRule(domain: "example.com", browser: chrome),
             ],
-            leases: [
-                RoutingLease(
-                    domain: "example.com",
-                    browser: firefox,
-                    expiresAt: .distantFuture
-                ),
-            ]
+            browserLease: BrowserLease(
+                browser: firefox,
+                startedAt: now,
+                expiresAt: now.addingTimeInterval(15 * 60)
+            )
         )
-        let engine = RoutingEngine(browserChange: browserChange)
+        let engine = RoutingEngine(
+            browserChange: browserChange,
+            now: { now }
+        )
         let url = try XCTUnwrap(URL(string: "https://example.com"))
 
         let explicit = try engine.decision(
@@ -155,7 +157,60 @@ final class RoutingRuleEngineTests: XCTestCase {
             explicit,
             RoutingDecision(target: firefox, reason: .explicitTarget)
         )
-        XCTAssertEqual(routed.target, chrome)
+        XCTAssertEqual(routed.target, firefox)
+    }
+
+    func testExpiredAndUnavailableLeasesFallThroughAtTheExactBoundary() throws {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        let url = try XCTUnwrap(URL(string: "https://example.com"))
+        let engine = RoutingEngine(
+            browserChange: browserChange,
+            now: { now }
+        )
+        let configuration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: safari,
+            domainRules: [
+                DomainRule(domain: "example.com", browser: chrome),
+            ],
+            browserLease: BrowserLease(
+                browser: firefox,
+                startedAt: now.addingTimeInterval(-15 * 60),
+                expiresAt: now
+            )
+        )
+
+        let expired = try engine.decision(
+            for: url,
+            configuration: configuration,
+            availableTargets: [safari, chrome, firefox]
+        )
+        var unavailableConfiguration = configuration
+        unavailableConfiguration.browserLease = BrowserLease(
+            browser: firefox,
+            startedAt: now,
+            expiresAt: nil
+        )
+        let unavailable = try engine.decision(
+            for: url,
+            configuration: unavailableConfiguration,
+            availableTargets: [safari, chrome]
+        )
+        var futureConfiguration = configuration
+        futureConfiguration.browserLease = BrowserLease(
+            browser: firefox,
+            startedAt: now.addingTimeInterval(1),
+            expiresAt: now.addingTimeInterval(901)
+        )
+        let notStarted = try engine.decision(
+            for: url,
+            configuration: futureConfiguration,
+            availableTargets: [safari, chrome, firefox]
+        )
+
+        XCTAssertEqual(expired.target, chrome)
+        XCTAssertEqual(unavailable.target, chrome)
+        XCTAssertEqual(notStarted.target, chrome)
     }
 
     func testExplicitChooserWorksWhenSmartRoutingIsOff() throws {

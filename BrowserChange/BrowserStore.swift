@@ -33,6 +33,8 @@ final class BrowserStore {
     private(set) var transactionStatus: HandlerTransactionStatus = .idle
     private(set) var handlerHealth: HTTPHandlerHealth
     private(set) var routingState: BrowserRoutingState = .direct
+    private(set) var activeBrowserLease: BrowserLease?
+    private(set) var canUndoLease = false
     private(set) var airlockResult = AirlockParseResult(
         items: [],
         rejectedCandidateCount: 0,
@@ -55,6 +57,7 @@ final class BrowserStore {
     private let browserChange: BrowserReference
     private let transactionCoordinator: HandlerTransactionCoordinator
     private let smartRoutingCoordinator: SmartRoutingCoordinator
+    private let browserLeaseCoordinator: BrowserLeaseCoordinator
     private let routingCoordinator: RoutingCoordinator
     private let configurationEditor: RoutingConfigurationEditor
 
@@ -65,7 +68,11 @@ final class BrowserStore {
         { _ in "No change. A peaceful outcome." },
     ]
 
-    init(environment: AppEnvironment = .live()) {
+    convenience init() {
+        self.init(environment: .live())
+    }
+
+    init(environment: AppEnvironment) {
         self.environment = environment
         let browserChange = BrowserReference(
             bundleIdentifier: Bundle.main.bundleIdentifier
@@ -84,16 +91,31 @@ final class BrowserStore {
             transactionCoordinator: transactionCoordinator,
             browserChange: browserChange
         )
+        let browserLeaseCoordinator = BrowserLeaseCoordinator(
+            systemHandler: environment.systemBrowserHandler,
+            repository: environment.stateRepository,
+            browserChange: browserChange,
+            scheduler: environment.leaseScheduler,
+            now: environment.now
+        )
+        self.browserLeaseCoordinator = browserLeaseCoordinator
         self.routingCoordinator = RoutingCoordinator(
             launcher: environment.urlLauncher,
-            browserChange: browserChange
+            browserChange: browserChange,
+            now: environment.now
         )
         self.configurationEditor = RoutingConfigurationEditor(
-            browserChange: browserChange
+            browserChange: browserChange,
+            now: environment.now
         )
         self.handlerHealth = HTTPHandlerSnapshot.missing.health(
             browserChange: browserChange
         )
+        browserLeaseCoordinator.onAutomaticExpiry = { [weak self] in
+            guard let self else { return }
+            self.reload()
+            self.message = self.leaseEndedMessage
+        }
         reload()
     }
 
@@ -113,6 +135,32 @@ final class BrowserStore {
         switchable.filter {
             !$0.isImaginary && $0.reference != browserChange
         }
+    }
+
+    var isSmartRoutingActive: Bool {
+        if case .smartActive = routingState {
+            return true
+        }
+        return false
+    }
+
+    var borrowableBrowsers: [InstalledBrowser] {
+        isSmartRoutingActive ? externalBrowsers : []
+    }
+
+    var activeLeaseBrowser: InstalledBrowser? {
+        guard let target = activeBrowserLease?.browser else {
+            return nil
+        }
+        return installed.first { $0.reference == target }
+    }
+
+    var activeLeaseRemainingText: String? {
+        guard let lease = activeBrowserLease else { return nil }
+        return BrowserLeaseFormatting.remainingText(
+            for: lease,
+            at: environment.now()
+        )
     }
 
     var routingModeTitle: String {
@@ -348,6 +396,68 @@ final class BrowserStore {
         }
     }
 
+    @discardableResult
+    func borrowBrowser(
+        _ browser: InstalledBrowser,
+        for preset: BrowserLeasePreset
+    ) -> Bool {
+        guard isSmartRoutingActive else {
+            message = "Borrow is available only while Smart Routing is active."
+            return false
+        }
+        guard externalBrowsers.contains(where: { $0.id == browser.id }) else {
+            message = "Choose an installed external browser to borrow."
+            return false
+        }
+
+        let outcome = browserLeaseCoordinator.startLease(
+            to: browser.reference,
+            preset: preset,
+            availableTargets: availableBrowserReferences
+        )
+        reload()
+        switch outcome {
+        case .succeeded:
+            message = "\(preset.activeDescription(browserName: browser.name)). Rules and the \(defaultBrowserName) fallback are unchanged."
+            return true
+        case .failed(let issue):
+            message = browserLeaseMessage(for: issue)
+            return false
+        }
+    }
+
+    @discardableResult
+    func endBrowserLease() -> Bool {
+        let outcome = browserLeaseCoordinator.endLease()
+        reload()
+        switch outcome {
+        case .succeeded:
+            message = leaseEndedMessage
+            return true
+        case .failed(let issue):
+            message = browserLeaseMessage(for: issue)
+            return false
+        }
+    }
+
+    @discardableResult
+    func undoBrowserLeaseChange() -> Bool {
+        let outcome = browserLeaseCoordinator.undo()
+        reload()
+        switch outcome {
+        case .succeeded:
+            if let lease = activeBrowserLease {
+                message = "Restored the lease for \(name(for: lease.browser))."
+            } else {
+                message = leaseEndedMessage
+            }
+            return true
+        case .failed(let issue):
+            message = browserLeaseMessage(for: issue)
+            return false
+        }
+    }
+
     func routeIncomingURL(_ url: URL) async -> IncomingURLDisposition {
         reload()
         guard case .smartActive = routingState else {
@@ -421,6 +531,7 @@ final class BrowserStore {
     }
 
     func openAirlockNow(_ item: AirlockItem) async -> RoutingOutcome {
+        reload()
         let outcome = await routingCoordinator.route(
             item.normalized.originalURL,
             configuration: smartRoutingCoordinator.configuration,
@@ -436,6 +547,7 @@ final class BrowserStore {
         always scope: DomainRuleScope? = nil,
         profileID: UUID? = nil
     ) async -> RoutingOutcome {
+        reload()
         let outcome = await routingCoordinator.route(
             item.normalized.originalURL,
             configuration: smartRoutingCoordinator.configuration,
@@ -849,6 +961,31 @@ final class BrowserStore {
         }
     }
 
+    private var leaseEndedMessage: String {
+        "The browser lease ended. Rules and the \(defaultBrowserName) fallback are active again."
+    }
+
+    private func browserLeaseMessage(
+        for issue: BrowserLeaseIssue
+    ) -> String {
+        switch issue {
+        case .smartRoutingUnavailable:
+            "Borrow is available only while Smart Routing is active."
+        case .selfTarget:
+            "BrowserChange cannot be a lease target."
+        case .targetUnavailable:
+            "That browser is not installed, so the lease was not changed."
+        case .noActiveLease:
+            "There is no active browser lease to end."
+        case .noUndoReceipt:
+            "There is no browser lease change to undo."
+        case .undoPreconditionFailed:
+            "Undo is no longer available because the routing configuration changed."
+        case .configurationPersistenceFailed:
+            "BrowserChange could not save the browser lease."
+        }
+    }
+
     private func transactionMessage(
         for issue: HandlerTransactionIssue,
         browserName: String? = nil
@@ -883,6 +1020,9 @@ final class BrowserStore {
         installed = environment.browserCatalog.installedBrowsers()
         let handlers = environment.systemBrowserHandler.currentHandlers()
         handlerHealth = handlers.health(browserChange: browserChange)
+        let leaseReconciliation = browserLeaseCoordinator.reconcile(
+            availableTargets: availableBrowserReferences
+        )
         let smartStatus = smartRoutingCoordinator.refreshOwnership()
         switch smartStatus {
         case .direct:
@@ -902,7 +1042,26 @@ final class BrowserStore {
                 ?? handlerHealth.agreedExternalBrowser?.bundleIdentifier
         }
         canUndo = transactionCoordinator.canUndo(currentHandlers: handlers)
+        activeBrowserLease = smartRoutingCoordinator
+            .configuration.browserLease
+        canUndoLease = browserLeaseCoordinator.canUndo
         publish()
+
+        if leaseReconciliation.didExpire {
+            message = leaseEndedMessage
+        } else {
+            switch leaseReconciliation.issue {
+            case .targetUnavailable:
+                message = "The leased browser is unavailable, so this lease is paused. Rules and the \(defaultBrowserName) fallback still apply."
+            case .selfTarget:
+                message = "BrowserChange cannot be a lease target. Rules and the \(defaultBrowserName) fallback still apply."
+            case .configurationPersistenceFailed:
+                message = "BrowserChange could not reconcile the browser lease. Expired leases will not be used for routing."
+            case nil, .smartRoutingUnavailable, .noActiveLease,
+                    .noUndoReceipt, .undoPreconditionFailed:
+                break
+            }
+        }
     }
 
     private func name(for browser: BrowserReference) -> String {

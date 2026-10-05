@@ -73,11 +73,11 @@ final class FoundationModelTests: XCTestCase {
             browser: work,
             isEnabled: true
         )
-        let lease = RoutingLease(
+        let lease = BrowserLease(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
             revision: 4,
-            domain: "docs.example.com",
             browser: fallback,
+            startedAt: Date(timeIntervalSince1970: 1_799_999_100),
             expiresAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
         let configuration = RoutingConfiguration(
@@ -85,7 +85,7 @@ final class FoundationModelTests: XCTestCase {
             fallbackBrowser: fallback,
             domainRules: [rule],
             profiles: [profile],
-            leases: [lease]
+            browserLease: lease
         )
 
         let data = try JSONEncoder().encode(configuration)

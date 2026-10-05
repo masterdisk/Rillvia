@@ -2,6 +2,7 @@ import Foundation
 
 enum RoutingDecisionReason: Equatable, Sendable {
     case explicitTarget
+    case activeLease(leaseID: UUID)
     case activeProfileExactHost(ruleID: UUID)
     case activeProfileParentDomain(ruleID: UUID)
     case globalExactHost(ruleID: UUID)
@@ -12,6 +13,8 @@ enum RoutingDecisionReason: Equatable, Sendable {
         switch self {
         case .explicitTarget:
             "Explicit browser choice"
+        case .activeLease:
+            "Active browser lease"
         case .activeProfileExactHost:
             "Exact domain rule in the active profile"
         case .activeProfileParentDomain:
@@ -48,11 +51,16 @@ enum RoutingIssue: Error, Equatable, Sendable {
     case launchFailed
 }
 
-struct RoutingEngine: Sendable {
+struct RoutingEngine {
     private let browserChange: BrowserReference
+    private let now: () -> Date
 
-    init(browserChange: BrowserReference) {
+    init(
+        browserChange: BrowserReference,
+        now: @escaping () -> Date = { Date() }
+    ) {
         self.browserChange = browserChange
+        self.now = now
     }
 
     func decision(
@@ -84,6 +92,15 @@ struct RoutingEngine: Sendable {
         }
         guard configuration.mode == .smart else {
             throw RoutingIssue.smartRoutingUnavailable
+        }
+
+        if let lease = configuration.browserLease,
+           lease.isActive(at: now()),
+           usable(lease.browser) {
+            return RoutingDecision(
+                target: lease.browser,
+                reason: .activeLease(leaseID: lease.id)
+            )
         }
 
         let activeProfile = configuration.profiles.first {
