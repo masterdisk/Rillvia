@@ -151,6 +151,7 @@ final class BrowserLeaseCoordinator {
     var canUndo: Bool {
         guard let undoReceipt else { return false }
         return configuration == undoReceipt.precondition
+            && isUndoEligible(undoReceipt, at: now())
     }
 
     func startLease(
@@ -242,7 +243,15 @@ final class BrowserLeaseCoordinator {
     }
 
     func undo() -> BrowserLeaseOutcome {
+        let hadUndoReceipt = undoReceipt != nil
+        let reconciliation = reconcile()
+        if reconciliation.issue == .configurationPersistenceFailed {
+            return .failed(.configurationPersistenceFailed)
+        }
         guard let receipt = undoReceipt else {
+            if hadUndoReceipt && !reconciliation.didExpire {
+                return .failed(.undoPreconditionFailed)
+            }
             return .failed(.noUndoReceipt)
         }
         do {
@@ -251,6 +260,10 @@ final class BrowserLeaseCoordinator {
             guard current == receipt.precondition else {
                 undoReceipt = nil
                 return .failed(.undoPreconditionFailed)
+            }
+            guard isUndoEligible(receipt, at: now()) else {
+                undoReceipt = nil
+                return .failed(.noUndoReceipt)
             }
 
             var desired = current
@@ -269,6 +282,21 @@ final class BrowserLeaseCoordinator {
         } catch {
             return .failed(.configurationPersistenceFailed)
         }
+    }
+
+    private func isUndoEligible(
+        _ receipt: UndoReceipt,
+        at date: Date
+    ) -> Bool {
+        if let lease = receipt.precondition.browserLease,
+           !lease.isActive(at: date) {
+            return false
+        }
+        if let lease = receipt.restore,
+           !lease.isActive(at: date) {
+            return false
+        }
+        return true
     }
 
     @discardableResult

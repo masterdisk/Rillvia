@@ -238,6 +238,58 @@ final class BrowserLeaseCoordinatorTests: XCTestCase {
         XCTAssertTrue(handler.setCalls.isEmpty)
     }
 
+    func testUndoReconcilesExactExpiryBeforeDelayedSchedulerCallback() throws {
+        var now = Date(timeIntervalSince1970: 1_900_000_000)
+        try saveActiveSmartConfiguration()
+        let handler = makeHandler(handlers: .same(browserChange))
+        let scheduler = FakeBrowserLeaseScheduler()
+        let coordinator = makeCoordinator(
+            handler: handler,
+            scheduler: scheduler,
+            now: { now }
+        )
+        XCTAssertEqual(
+            coordinator.startLease(
+                to: safari.browser,
+                preset: .fifteenMinutes
+            ),
+            .succeeded
+        )
+        XCTAssertEqual(
+            coordinator.startLease(
+                to: firefox.browser,
+                preset: .fifteenMinutes
+            ),
+            .succeeded
+        )
+        now = try XCTUnwrap(
+            repository.loadConfiguration().browserLease?.expiresAt
+        )
+        XCTAssertNotNil(
+            scheduler.deadline,
+            "The scheduler callback must still be pending at the boundary."
+        )
+
+        XCTAssertFalse(
+            coordinator.canUndo,
+            "Undo must stop being offered at the exact expiry boundary."
+        )
+        XCTAssertEqual(
+            coordinator.undo(),
+            .failed(.noUndoReceipt)
+        )
+
+        XCTAssertNil(try repository.loadConfiguration().browserLease)
+        XCTAssertFalse(coordinator.canUndo)
+        XCTAssertEqual(
+            try repository.loadConfigurationHistory().entries.count,
+            3,
+            "Undo must reconcile expiry, not restore the expired prior lease."
+        )
+        XCTAssertNil(scheduler.deadline)
+        XCTAssertTrue(handler.setCalls.isEmpty)
+    }
+
     func testColdReconcileRemovesPersistedExpiredLeaseAndKeepsUnavailableLease() throws {
         let now = Date(timeIntervalSince1970: 1_900_000_000)
         let expired = BrowserLease(
