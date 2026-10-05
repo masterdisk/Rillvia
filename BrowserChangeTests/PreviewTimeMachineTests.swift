@@ -24,7 +24,66 @@ final class PreviewTimeMachineTests: XCTestCase {
         bundleIdentifier: "org.mozilla.firefox"
     )
 
-    func testTimelineIsNewestFirstBoundedAndDescribesConfigurationChanges() {
+    func testTimelineUsesRepositoryTrimmedHistoryAndDescribesChanges() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PreviewTimeMachineTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let repository = StateRepository(baseDirectory: directory)
+
+        for index in 1...55 {
+            let configuration = RoutingConfiguration(
+                fallbackBrowser: safari.reference,
+                domainRules: Array(
+                    repeating: DomainRule(
+                        domain: "rule-\(index).example",
+                        browser: safari.reference
+                    ),
+                    count: index
+                )
+            )
+            try repository.appendConfigurationSnapshot(
+                configuration,
+                recordedAt: Date(timeIntervalSince1970: Double(index)),
+                historyLimit: 50
+            )
+        }
+
+        let persistedHistory = try repository.inspectConfigurationHistory()
+        XCTAssertEqual(persistedHistory.entries.count, 50)
+        XCTAssertEqual(
+            persistedHistory.entries.first?.recordedAt,
+            Date(timeIntervalSince1970: 6)
+        )
+
+        let model = PreviewTimeMachineModel.make(
+            history: persistedHistory,
+            installedBrowsers: [safari, chrome]
+        )
+
+        XCTAssertEqual(model.snapshots.count, 50)
+        XCTAssertEqual(
+            model.snapshots.first?.recordedAt,
+            Date(timeIntervalSince1970: 55)
+        )
+        XCTAssertEqual(
+            model.snapshots.last?.recordedAt,
+            Date(timeIntervalSince1970: 6)
+        )
+        XCTAssertEqual(
+            model.snapshots.first?.changes,
+            ["Added 1 domain rule."]
+        )
+        XCTAssertEqual(
+            model.snapshots.last?.changes,
+            ["Oldest retained snapshot. Earlier changes are unavailable."]
+        )
+        XCTAssertEqual(
+            model.snapshots.dropLast().last?.changes,
+            ["Added 1 domain rule."]
+        )
+    }
+
+    func testTimelineDescribesConfigurationChanges() {
         let work = RoutingProfile(name: "Work")
         let first = RoutingConfiguration(
             fallbackBrowser: chrome.reference
@@ -51,49 +110,10 @@ final class PreviewTimeMachineTests: XCTestCase {
             historyEntry(index: 1, configuration: first),
             historyEntry(index: 2, configuration: second),
             historyEntry(index: 3, configuration: third),
-        ] + (4...55).map {
-            historyEntry(
-                index: $0,
-                configuration: RoutingConfiguration(
-                    mode: .smart,
-                    fallbackBrowser: safari.reference,
-                    domainRules: Array(
-                        repeating: DomainRule(
-                            domain: "rule-\($0).example",
-                            browser: safari.reference
-                        ),
-                        count: $0 - 2
-                    ),
-                    profiles: [work],
-                    activeProfileID: work.id
-                )
-            )
-        }
-
-        let model = PreviewTimeMachineModel.make(
-            history: ConfigurationHistory(entries: entries),
-            installedBrowsers: [safari, chrome],
-            limit: 50
-        )
-
-        XCTAssertEqual(model.snapshots.count, 50)
-        XCTAssertEqual(
-            model.snapshots.first?.recordedAt,
-            Date(timeIntervalSince1970: 55)
-        )
-        XCTAssertEqual(
-            model.snapshots.last?.recordedAt,
-            Date(timeIntervalSince1970: 6)
-        )
-        XCTAssertEqual(
-            model.snapshots.first?.changes,
-            ["Added 1 domain rule."]
-        )
+        ]
 
         let focused = PreviewTimeMachineModel.make(
-            history: ConfigurationHistory(
-                entries: Array(entries.prefix(3))
-            ),
+            history: ConfigurationHistory(entries: entries),
             installedBrowsers: [safari, chrome]
         )
         XCTAssertEqual(
@@ -107,8 +127,105 @@ final class PreviewTimeMachineTests: XCTestCase {
             focused.snapshots[1].changes,
             [
                 "Turned Smart Routing on.",
+                "Added the Work profile.",
                 "Selected the Work profile.",
             ]
+        )
+        XCTAssertEqual(
+            focused.snapshots[2].changes,
+            ["Oldest retained snapshot. Earlier changes are unavailable."]
+        )
+    }
+
+    func testTimelineDescribesProfileOnlyChanges() {
+        let profileID = UUID()
+        let first = RoutingConfiguration()
+        var profile = RoutingProfile(
+            id: profileID,
+            name: "Work",
+            browser: chrome.reference
+        )
+        let second = RoutingConfiguration(profiles: [profile])
+
+        profile.name = "Client"
+        profile.revision = 2
+        var third = second
+        third.profiles = [profile]
+
+        profile.isEnabled = false
+        profile.revision = 3
+        var fourth = third
+        fourth.profiles = [profile]
+
+        profile.isEnabled = true
+        profile.revision = 4
+        var fifth = fourth
+        fifth.profiles = [profile]
+
+        profile.browser = safari.reference
+        profile.revision = 5
+        var sixth = fifth
+        sixth.profiles = [profile]
+
+        profile.source = .airlock
+        profile.revision = 6
+        var seventh = sixth
+        seventh.profiles = [profile]
+
+        var eighth = seventh
+        eighth.profiles = []
+
+        let configurations = [
+            first,
+            second,
+            third,
+            fourth,
+            fifth,
+            sixth,
+            seventh,
+            eighth,
+        ]
+        let snapshots = Array(PreviewTimeMachineModel.make(
+            history: ConfigurationHistory(
+                entries: configurations.enumerated().map {
+                    historyEntry(
+                        index: $0.offset + 1,
+                        configuration: $0.element
+                    )
+                }
+            ),
+            installedBrowsers: [safari, chrome]
+        ).snapshots.reversed())
+
+        XCTAssertEqual(snapshots[1].changes, ["Added the Work profile."])
+        XCTAssertEqual(
+            snapshots[2].changes,
+            ["Renamed the Work profile to Client."]
+        )
+        XCTAssertEqual(
+            snapshots[3].changes,
+            ["Disabled the Client profile."]
+        )
+        XCTAssertEqual(
+            snapshots[4].changes,
+            ["Enabled the Client profile."]
+        )
+        XCTAssertEqual(
+            snapshots[5].changes,
+            ["Changed the Client profile browser from Google Chrome to Safari."]
+        )
+        XCTAssertEqual(
+            snapshots[6].changes,
+            ["Updated the Client profile."]
+        )
+        XCTAssertEqual(
+            snapshots[7].changes,
+            ["Removed the Client profile."]
+        )
+        XCTAssertFalse(
+            snapshots.dropFirst().contains {
+                $0.changes == ["No configuration changes."]
+            }
         )
     }
 

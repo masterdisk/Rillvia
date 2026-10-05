@@ -37,22 +37,28 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
             }
             return $0.id.uuidString < $1.id.uuidString
         }
-        var previous = RoutingConfiguration.fresh
-        let described = ordered.map { entry in
-            defer { previous = entry.configuration }
+        let retained = ordered.suffix(max(0, limit))
+        var previous: RoutingConfiguration?
+        let described = retained.map { entry in
+            let description = previous.map {
+                changes(
+                    from: $0,
+                    to: entry.configuration,
+                    installedBrowsers: installedBrowsers
+                )
+            } ?? [
+                "Oldest retained snapshot. Earlier changes are unavailable.",
+            ]
+            previous = entry.configuration
             return HistoricalConfigurationSnapshot(
                 id: entry.id,
                 recordedAt: entry.recordedAt,
                 configuration: entry.configuration,
-                changes: changes(
-                    from: previous,
-                    to: entry.configuration,
-                    installedBrowsers: installedBrowsers
-                )
+                changes: description
             )
         }
         return PreviewTimeMachineModel(
-            snapshots: Array(described.suffix(max(0, limit))).reversed()
+            snapshots: described.reversed()
         )
     }
 
@@ -145,6 +151,14 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
             }
         }
 
+        result.append(
+            contentsOf: profileChanges(
+                from: previous.profiles,
+                to: current.profiles,
+                installedBrowsers: installedBrowsers
+            )
+        )
+
         if previous.activeProfileID != current.activeProfileID {
             if let profileID = current.activeProfileID,
                let name = current.profiles.first(
@@ -193,6 +207,100 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
         return result.isEmpty
             ? ["No configuration changes."]
             : result
+    }
+
+    private static func profileChanges(
+        from previous: [RoutingProfile],
+        to current: [RoutingProfile],
+        installedBrowsers: [InstalledBrowser]
+    ) -> [String] {
+        let previousByID = Dictionary(
+            previous.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let currentByID = Dictionary(
+            current.map { ($0.id, $0) },
+            uniquingKeysWith: { _, last in last }
+        )
+        var result: [String] = []
+
+        for profile in previous
+            .filter({ currentByID[$0.id] == nil })
+            .sorted(by: profileComesBefore) {
+            result.append("Removed the \(profile.name) profile.")
+        }
+
+        for profile in current
+            .filter({ previousByID[$0.id] == nil })
+            .sorted(by: profileComesBefore) {
+            result.append("Added the \(profile.name) profile.")
+        }
+
+        let retainedProfiles = current
+            .filter { previousByID[$0.id] != nil }
+            .sorted(by: profileComesBefore)
+        for profile in retainedProfiles {
+            guard let old = previousByID[profile.id],
+                  old != profile else {
+                continue
+            }
+
+            var describedVisibleChange = false
+            if old.name != profile.name {
+                result.append(
+                    "Renamed the \(old.name) profile to \(profile.name)."
+                )
+                describedVisibleChange = true
+            }
+            if old.isEnabled != profile.isEnabled {
+                result.append(
+                    profile.isEnabled
+                        ? "Enabled the \(profile.name) profile."
+                        : "Disabled the \(profile.name) profile."
+                )
+                describedVisibleChange = true
+            }
+            if old.browser != profile.browser {
+                switch (old.browser, profile.browser) {
+                case (.some(let oldBrowser), .some(let newBrowser)):
+                    result.append(
+                        "Changed the \(profile.name) profile browser from \(browserName(oldBrowser, installedBrowsers: installedBrowsers)) to \(browserName(newBrowser, installedBrowsers: installedBrowsers))."
+                    )
+                case (.none, .some(let browser)):
+                    result.append(
+                        "Set \(browserName(browser, installedBrowsers: installedBrowsers)) as the \(profile.name) profile browser."
+                    )
+                case (.some, .none):
+                    result.append(
+                        "Removed the \(profile.name) profile browser."
+                    )
+                case (.none, .none):
+                    break
+                }
+                describedVisibleChange = true
+            }
+
+            let hasOtherChange = old.source != profile.source
+                || old.createdAt != profile.createdAt
+                || (!describedVisibleChange
+                    && (old.revision != profile.revision
+                        || old.updatedAt != profile.updatedAt))
+            if hasOtherChange || !describedVisibleChange {
+                result.append("Updated the \(profile.name) profile.")
+            }
+        }
+
+        return result
+    }
+
+    private static func profileComesBefore(
+        _ lhs: RoutingProfile,
+        _ rhs: RoutingProfile
+    ) -> Bool {
+        let comparison = lhs.name.localizedStandardCompare(rhs.name)
+        return comparison == .orderedSame
+            ? lhs.id.uuidString < rhs.id.uuidString
+            : comparison == .orderedAscending
     }
 
     private static func browserName(
