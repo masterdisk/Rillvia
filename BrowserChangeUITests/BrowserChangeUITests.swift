@@ -8,7 +8,10 @@ final class BrowserChangeUITests: XCTestCase {
 
     func testMainWindowPrioritizesChoosingTheDefaultBrowser() {
         let app = XCUIApplication()
-        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
         app.launch()
 
         XCTAssertTrue(
@@ -52,6 +55,7 @@ final class BrowserChangeUITests: XCTestCase {
         app.launchArguments = [
             "-ApplePersistenceIgnoreState", "YES",
             "--force-dark-appearance",
+            "--ui-testing",
         ]
         app.launch()
 

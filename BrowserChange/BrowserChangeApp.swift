@@ -33,7 +33,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct BrowserChangeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var store = BrowserStore()
+    @State private var store: BrowserStore
+
+    init() {
+        _store = State(
+            initialValue: BrowserStore(environment: .bootstrap())
+        )
+    }
 
     var body: some Scene {
         Window("BrowserChange", id: "main") {

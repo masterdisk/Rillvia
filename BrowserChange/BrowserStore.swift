@@ -26,6 +26,7 @@ final class BrowserStore {
     private var titleGate = TapGate(threshold: 5, interval: 1.5)
     private var moonGate = TapGate(threshold: 4, interval: 2)
     private var lynxKeys = CharacterSequence(target: "lynx", gap: 1.2)
+    private let environment: AppEnvironment
 
     private let quips: [(String) -> String] = [
         { "\($0) is already the default. The others can wait." },
@@ -34,7 +35,8 @@ final class BrowserStore {
         { _ in "No change. A peaceful outcome." },
     ]
 
-    init() {
+    init(environment: AppEnvironment = .live()) {
+        self.environment = environment
         reload()
     }
 
@@ -114,12 +116,10 @@ final class BrowserStore {
         defer { isSwitching = false }
 
         // Launch Services keeps a handler per scheme. Both have to move together.
-        for scheme in ["https", "http"] {
+        for scheme in [WebScheme.https, .http] {
             do {
-                try await NSWorkspace.shared.setDefaultApplication(
-                    at: browser.appURL,
-                    toOpenURLsWithScheme: scheme
-                )
+                try await environment.systemBrowserHandler
+                    .setDefaultHandler(browser.reference, for: scheme)
             } catch {
                 reload()
                 if defaultBundleID == browser.id {
@@ -140,8 +140,12 @@ final class BrowserStore {
     }
 
     private func reload() {
-        installed = BrowserLookup.installedBrowsers()
-        defaultBundleID = BrowserLookup.defaultBundleID()
+        installed = environment.browserCatalog.installedBrowsers()
+        defaultBundleID = environment.systemBrowserHandler
+            .currentHandlers()
+            .https?
+            .browser
+            .bundleIdentifier
         publish()
     }
 

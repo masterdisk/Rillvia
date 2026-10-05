@@ -1,0 +1,115 @@
+import Foundation
+
+struct AppEnvironment {
+    var browserCatalog: any BrowserCatalog
+    var systemBrowserHandler: any SystemBrowserHandling
+    var stateRepository: StateRepository
+
+    static func live() -> AppEnvironment {
+        AppEnvironment(
+            browserCatalog: WorkspaceBrowserCatalog(),
+            systemBrowserHandler: SystemBrowserHandler(),
+            stateRepository: StateRepository()
+        )
+    }
+
+    static func bootstrap(
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> AppEnvironment {
+        #if DEBUG
+        if arguments.contains("--ui-testing") {
+            return uiTesting()
+        }
+        #endif
+        return live()
+    }
+
+    #if DEBUG
+    private static func uiTesting() -> AppEnvironment {
+        let safari = InstalledBrowser(
+            id: "com.apple.Safari",
+            name: "Safari",
+            version: "26.0",
+            appURL: URL(fileURLWithPath: "/Applications/Safari.app")
+        )
+        let chrome = InstalledBrowser(
+            id: "com.google.Chrome",
+            name: "Google Chrome",
+            version: "140",
+            appURL: URL(fileURLWithPath: "/Applications/Google Chrome.app")
+        )
+        let chromeHandler = HandlerApplication(
+            browser: chrome.reference,
+            applicationURL: chrome.appURL
+        )
+        let handler = UITestSystemBrowserHandler(
+            handlers: .same(chromeHandler),
+            applications: [
+                safari.reference: safari.appURL,
+                chrome.reference: chrome.appURL,
+            ]
+        )
+        let stateDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "BrowserChange-UITests-\(ProcessInfo.processInfo.processIdentifier)",
+                isDirectory: true
+            )
+
+        return AppEnvironment(
+            browserCatalog: UITestBrowserCatalog(browsers: [safari, chrome]),
+            systemBrowserHandler: handler,
+            stateRepository: StateRepository(baseDirectory: stateDirectory)
+        )
+    }
+    #endif
+}
+
+#if DEBUG
+private struct UITestBrowserCatalog: BrowserCatalog {
+    var browsers: [InstalledBrowser]
+
+    func installedBrowsers() -> [InstalledBrowser] {
+        browsers
+    }
+}
+
+private final class UITestSystemBrowserHandler: SystemBrowserHandling {
+    private var handlers: HTTPHandlerSnapshot
+    private let applications: [BrowserReference: URL]
+
+    init(
+        handlers: HTTPHandlerSnapshot,
+        applications: [BrowserReference: URL]
+    ) {
+        self.handlers = handlers
+        self.applications = applications
+    }
+
+    func currentHandlers() -> HTTPHandlerSnapshot {
+        handlers
+    }
+
+    func applicationURL(for browser: BrowserReference) -> URL? {
+        applications[browser]
+    }
+
+    func setDefaultHandler(
+        _ browser: BrowserReference,
+        for scheme: WebScheme
+    ) async throws {
+        guard let applicationURL = applications[browser] else {
+            throw SystemBrowserHandlerError.applicationNotFound(browser)
+        }
+        handlers[scheme] = HandlerApplication(
+            browser: browser,
+            applicationURL: applicationURL
+        )
+    }
+
+    func open(_ url: URL, with browser: BrowserReference) async throws {
+        guard applications[browser] != nil else {
+            throw SystemBrowserHandlerError.applicationNotFound(browser)
+        }
+    }
+}
+#endif
