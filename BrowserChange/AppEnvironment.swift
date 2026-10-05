@@ -77,12 +77,20 @@ struct AppEnvironment {
                 ?? "com.browserchange.BrowserChange"
         )
         let browserChangeURL = Bundle.main.bundleURL
+        let browserChangeHandler = HandlerApplication(
+            browser: browserChange,
+            applicationURL: browserChangeURL
+        )
         let handlers: HTTPHandlerSnapshot
         if arguments.contains("--ui-testing-split-handlers") {
             handlers = HTTPHandlerSnapshot(
                 http: safariHandler,
                 https: chromeHandler
             )
+        } else if arguments.contains(
+            "--ui-testing-task7-fixture"
+        ) {
+            handlers = .same(browserChangeHandler)
         } else {
             handlers = .same(chromeHandler)
         }
@@ -100,7 +108,83 @@ struct AppEnvironment {
                 isDirectory: true
             )
         let repository = StateRepository(baseDirectory: stateDirectory)
-        if arguments.contains("--ui-testing-smart-suspended") {
+        let testNow = Date(timeIntervalSince1970: 1_900_000_000)
+        if arguments.contains("--ui-testing-task7-fixture") {
+            let work = RoutingProfile(
+                id: UUID(
+                    uuidString: "00000000-0000-0000-0000-000000000071"
+                )!,
+                name: "Work"
+            )
+            let smart = RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.reference
+            )
+            let rules = RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.reference,
+                domainRules: [
+                    DomainRule(
+                        id: UUID(
+                            uuidString: "00000000-0000-0000-0000-000000000072"
+                        )!,
+                        domain: "example.com",
+                        browser: safari.reference,
+                        profileID: work.id
+                    ),
+                ],
+                profiles: [work],
+                activeProfileID: work.id
+            )
+            var leased = rules
+            leased.browserLease = BrowserLease(
+                id: UUID(
+                    uuidString: "00000000-0000-0000-0000-000000000073"
+                )!,
+                browser: safari.reference,
+                startedAt: testNow,
+                expiresAt: testNow.addingTimeInterval(15 * 60)
+            )
+            try? repository.saveConfiguration(leased)
+            try? repository.saveConfigurationHistory(
+                ConfigurationHistory(
+                    entries: [
+                        ConfigurationHistoryEntry(
+                            id: UUID(
+                                uuidString: "00000000-0000-0000-0000-000000000074"
+                            )!,
+                            recordedAt: testNow.addingTimeInterval(-120),
+                            configuration: smart
+                        ),
+                        ConfigurationHistoryEntry(
+                            id: UUID(
+                                uuidString: "00000000-0000-0000-0000-000000000075"
+                            )!,
+                            recordedAt: testNow.addingTimeInterval(-60),
+                            configuration: rules
+                        ),
+                        ConfigurationHistoryEntry(
+                            id: UUID(
+                                uuidString: "00000000-0000-0000-0000-000000000076"
+                            )!,
+                            recordedAt: testNow,
+                            configuration: leased
+                        ),
+                    ]
+                )
+            )
+            if arguments.contains(
+                "--ui-testing-history-failure"
+            ) {
+                try? Data(
+                    #"{"schemaVersion":999,"entries":[]}"#.utf8
+                ).write(
+                    to: stateDirectory.appendingPathComponent(
+                        "configuration-history.json"
+                    )
+                )
+            }
+        } else if arguments.contains("--ui-testing-smart-suspended") {
             try? repository.saveConfiguration(
                 RoutingConfiguration(
                     mode: .smart,
@@ -109,7 +193,6 @@ struct AppEnvironment {
             )
         }
 
-        let testNow = Date(timeIntervalSince1970: 1_900_000_000)
         return AppEnvironment(
             browserCatalog: UITestBrowserCatalog(browsers: [safari, chrome]),
             systemBrowserHandler: handler,

@@ -1,4 +1,13 @@
+import AppKit
 import SwiftUI
+
+enum RoutingSummaryTrigger {
+    static func opensTimeMachine(
+        for modifiers: NSEvent.ModifierFlags
+    ) -> Bool {
+        modifiers.contains(.option)
+    }
+}
 
 struct RoutingSummaryView: View {
     @Environment(BrowserStore.self) private var store
@@ -22,6 +31,23 @@ struct RoutingSummaryView: View {
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard RoutingSummaryTrigger.opensTimeMachine(
+                    for: NSEvent.modifierFlags
+                ) else {
+                    return
+                }
+                store.openTimeMachine()
+            }
+            .accessibilityAction(
+                named: "Preview configuration history"
+            ) {
+                store.openTimeMachine()
+            }
+            .help(
+                "Option-click to preview configuration history"
+            )
 
             SummaryRow(
                 symbol: "person.crop.circle",

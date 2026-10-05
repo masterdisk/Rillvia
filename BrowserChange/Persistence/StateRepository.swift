@@ -17,6 +17,12 @@ extension StateRepositoryError: LocalizedError {
     }
 }
 
+struct PersistedSchemaVersions: Equatable, Sendable {
+    var configuration: Int?
+    var handlerJournal: Int?
+    var configurationHistory: Int?
+}
+
 final class StateRepository {
     private enum FileName {
         static let configuration = "configuration.json"
@@ -128,6 +134,36 @@ final class StateRepository {
         )
     }
 
+    /// Read-only inspection for diagnostics and historical preview. Unlike
+    /// recovery loads, these methods never quarantine or rewrite a file.
+    func inspectHandlerJournal() throws -> HandlerOperationJournal {
+        try inspect(
+            HandlerOperationJournal.self,
+            fileName: FileName.handlerJournal
+        )
+    }
+
+    func inspectConfigurationHistory() throws -> ConfigurationHistory {
+        try inspect(
+            ConfigurationHistory.self,
+            fileName: FileName.configurationHistory
+        )
+    }
+
+    func inspectSchemaVersions() -> PersistedSchemaVersions {
+        PersistedSchemaVersions(
+            configuration: inspectSchemaVersion(
+                fileName: FileName.configuration
+            ),
+            handlerJournal: inspectSchemaVersion(
+                fileName: FileName.handlerJournal
+            ),
+            configurationHistory: inspectSchemaVersion(
+                fileName: FileName.configurationHistory
+            )
+        )
+    }
+
     func saveConfigurationHistory(_ history: ConfigurationHistory) throws {
         try save(history, fileName: FileName.configurationHistory)
     }
@@ -182,6 +218,34 @@ final class StateRepository {
             try quarantine(fileURL)
             return .fresh
         }
+    }
+
+    private func inspect<Value: VersionedPersistedState>(
+        _ type: Value.Type,
+        fileName: String
+    ) throws -> Value {
+        let fileURL = baseDirectory.appendingPathComponent(fileName)
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return .fresh
+        }
+        let data = try Data(contentsOf: fileURL)
+        try rejectFutureSchema(
+            in: data,
+            fileName: fileName,
+            supported: Value.currentSchemaVersion
+        )
+        return try decoder.decode(Value.self, from: data)
+    }
+
+    private func inspectSchemaVersion(fileName: String) -> Int? {
+        let fileURL = baseDirectory.appendingPathComponent(fileName)
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return nil
+        }
+        return try? decoder.decode(
+            SchemaHeader.self,
+            from: data
+        ).schemaVersion
     }
 
     private func save<Value: VersionedPersistedState>(

@@ -23,6 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--force-dark-appearance") {
             NSApp.appearance = NSAppearance(named: .darkAqua)
+        } else if ProcessInfo.processInfo.arguments.contains(
+            "--force-light-appearance"
+        ) {
+            NSApp.appearance = NSAppearance(named: .aqua)
         }
         #endif
     }
@@ -109,6 +113,9 @@ struct BrowserChangeApp: App {
         .defaultPosition(.center)
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
+        .commands {
+            BrowserChangeCommands(store: store)
+        }
 
         MenuBarExtra {
             MenuPanel()
@@ -128,6 +135,7 @@ private struct RootView: View {
 
     var body: some View {
         ContentView()
+            .modifier(UITestingAccessibilityEnvironment())
             .onAppear {
                 delegate.connect(store: store) {
                     openWindow(id: "main")
@@ -137,5 +145,30 @@ private struct RootView: View {
             .task {
                 await delegate.prepareForIncomingURLs()
             }
+    }
+}
+
+private struct UITestingAccessibilityEnvironment: ViewModifier {
+    func body(content: Content) -> some View {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        content
+            .environment(
+                \.browserChangeReduceMotionOverride,
+                arguments.contains(
+                    "--ui-testing-reduce-motion"
+                )
+            )
+            .transformEnvironment(\.dynamicTypeSize) {
+                dynamicTypeSize in
+                if arguments.contains(
+                    "--ui-testing-large-text"
+                ) {
+                    dynamicTypeSize = .accessibility3
+                }
+            }
+        #else
+        content
+        #endif
     }
 }

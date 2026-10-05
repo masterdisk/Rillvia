@@ -141,6 +141,33 @@ final class AppIntentsMetadataTests: XCTestCase {
         )
     }
 
+    func testHostAppRegistersHTTPAndHTTPSAsAlternateViewerSchemes() throws {
+        let urlTypes = try XCTUnwrap(
+            Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleURLTypes"
+            ) as? [[String: Any]]
+        )
+        let webType = try XCTUnwrap(
+            urlTypes.first {
+                Set($0["CFBundleURLSchemes"] as? [String] ?? [])
+                    == Set(["http", "https"])
+            }
+        )
+
+        XCTAssertEqual(
+            webType["CFBundleTypeRole"] as? String,
+            "Viewer"
+        )
+        XCTAssertEqual(
+            webType["LSHandlerRank"] as? String,
+            "Alternate"
+        )
+        XCTAssertEqual(
+            webType["CFBundleURLName"] as? String,
+            "com.browserchange.BrowserChange.web"
+        )
+    }
+
     private func application(
         _ browser: InstalledBrowser
     ) -> HandlerApplication {

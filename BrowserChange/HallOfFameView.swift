@@ -1,77 +1,178 @@
 import SwiftUI
 
 struct HallOfFameView: View {
-    var browserCount: Int
+    var model: LivingBrowserHallModel
     @Environment(\.dismiss) private var dismiss
     @State private var cometLine = false
 
-    private let eras: [(year: String, name: String, line: String)] = [
-        ("1993", "NCSA Mosaic", "The web got a window."),
-        ("1994", "Netscape Navigator", "Browsing became a product."),
-        ("1995", "Internet Explorer", "It won, and then it stayed."),
-        ("2003", "Safari", "The browser that ships with the Mac."),
-        ("2008", "Chrome", "A new one, and then a crowd of them."),
-    ]
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("A short history of choosing")
-                .font(.title2.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("The Living Browser Hall")
+                        .font(.title2.weight(.semibold))
+                        .accessibilityIdentifier(
+                            "living-hall-title"
+                        )
+                    Text(
+                        "Browser history, illuminated by what is installed on this Mac."
+                    )
+                    .foregroundStyle(.secondary)
+                }
 
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(eras, id: \.year) { era in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(era.year)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        Text(era.name)
-                            .font(.headline)
-                            .onTapGesture {
-                                if era.name == "Netscape Navigator" {
-                                    cometLine = true
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(model.eras) { era in
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(
+                                systemName: era.isRepresented
+                                    ? "lightbulb.fill"
+                                    : "circle"
+                            )
+                            .foregroundStyle(
+                                era.isRepresented
+                                    ? Color.yellow
+                                    : Color.secondary
+                            )
+                            .frame(width: 18)
+                            .accessibilityHidden(true)
+
+                            VStack(
+                                alignment: .leading,
+                                spacing: 3
+                            ) {
+                                Text(era.year)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+
+                                if era.name
+                                    == "Netscape Navigator" {
+                                    Button(era.name) {
+                                        cometLine = true
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.headline)
+                                    .accessibilityIdentifier(
+                                        "hall-era-netscape"
+                                    )
+                                } else {
+                                    Text(era.name)
+                                        .font(.headline)
+                                }
+
+                                Text(era.line)
+                                    .foregroundStyle(.secondary)
+
+                                if era.isRepresented {
+                                    Label(
+                                        "Represented here by \(era.representedBy.joined(separator: ", "))",
+                                        systemImage: "macbook"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
+
+                                if cometLine
+                                    && era.name
+                                        == "Netscape Navigator" {
+                                    Text(
+                                        "The comet still has a name."
+                                    )
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier(
+                                        "netscape-footnote"
+                                    )
                                 }
                             }
-                        Text(era.line)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                        if cometLine && era.name == "Netscape Navigator" {
-                            Text("The comet still has a name.")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
                         }
+                        .accessibilityElement(
+                            children: .contain
+                        )
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Today")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Text("This Mac")
-                        .font(.headline)
-                    Text(todayLine)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Today")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("This Mac")
+                            .font(.headline)
+                        Text(model.todayLine)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                    }
+
+                    ForEach(model.browsers) { browser in
+                        VStack(
+                            alignment: .leading,
+                            spacing: 5
+                        ) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(browser.name)
+                                    .font(.body.weight(.semibold))
+                                    .accessibilityIdentifier(
+                                        "hall-browser-\(browser.id)"
+                                    )
+                                Spacer()
+                                Text("Version \(browser.version)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            ForEach(
+                                browser.status,
+                                id: \.self
+                            ) { status in
+                                Label(
+                                    status,
+                                    systemImage: status
+                                        == "Active browser lease"
+                                        ? "clock.badge.checkmark"
+                                        : "checkmark.circle"
+                                )
+                                .font(.caption)
+                            }
+
+                            Text(
+                                "\(browser.enabledRuleCount) enabled \(browser.enabledRuleCount == 1 ? "rule" : "rules")"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .background(
+                            .quaternary.opacity(0.25),
+                            in: RoundedRectangle(
+                                cornerRadius: 10
+                            )
+                        )
+                        .accessibilityElement(
+                            children: .contain
+                        )
+                    }
                 }
-            }
 
-            Button("Back to the present") {
-                dismiss()
+                Button("Back to the present") {
+                    dismiss()
+                }
+                .buttonStyle(.glass)
+                .keyboardShortcut(.cancelAction)
+                .padding(.top, 4)
             }
-            .buttonStyle(.glass)
-            .padding(.top, 4)
+            .padding(28)
+            .frame(maxWidth: 680, alignment: .leading)
         }
-    }
-
-    private var todayLine: String {
-        switch browserCount {
-        case 0:
-            "No browsers found. The shelf is waiting."
-        case 1:
-            "One browser installed. The choice is quiet, and still yours."
-        default:
-            "\(browserCount) browsers installed. You pick the one links open in."
-        }
+        .frame(
+            minWidth: 540,
+            idealWidth: 660,
+            minHeight: 540,
+            idealHeight: 700
+        )
     }
 }

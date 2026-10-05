@@ -30,15 +30,28 @@ struct BrowserSidebar: View {
 
             Section {
                 ForEach(store.browsers) { browser in
-                    BrowserSidebarRow(browser: browser)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button {
                         store.selectBrowser(browser.id)
+                    } label: {
+                        BrowserSidebarRow(browser: browser)
+                            .contentShape(Rectangle())
                     }
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityAction {
-                        store.selectBrowser(browser.id)
-                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier(
+                        "browser-row-\(browser.name)"
+                    )
+                    .accessibilityLabel(browser.name)
+                    .accessibilityValue(
+                        browser.id == store.defaultBundleID
+                            ? "\(browser.version), \(store.isSmartRoutingConfigured ? "Smart Routing fallback" : "current default")"
+                            : browser.version
+                    )
+                    .accessibilityAddTraits(
+                        store.workspaceDestination == .direct
+                            && store.selectedID == browser.id
+                            ? .isSelected
+                            : []
+                    )
                     .listRowBackground(
                         store.workspaceDestination == .direct
                             && store.selectedID == browser.id
@@ -47,10 +60,17 @@ struct BrowserSidebar: View {
                     )
                 }
             } header: {
-                Text("Browsers")
-                    .onTapGesture {
-                        store.tapTitle()
-                    }
+                Button("Browsers") {
+                    store.tapTitle()
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("browsers-header")
+                .accessibilityHint(
+                    "Press five times quickly to open the Living Browser Hall."
+                )
+                .help(
+                    "Five quick presses open the Living Browser Hall"
+                )
             }
         }
         .listStyle(.sidebar)
@@ -151,6 +171,8 @@ struct BrowserWorkspace: View {
 private struct DirectWorkspace: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.browserChangeReduceMotionOverride)
+    private var reduceMotionOverride
 
     var body: some View {
         ScrollView {
@@ -194,7 +216,15 @@ private struct DirectWorkspace: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .scrollIndicators(.hidden)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: store.selectedID)
+        .animation(
+            BrowserChangeMotionPolicy.animationsEnabled(
+                systemReduceMotion: reduceMotion,
+                testingOverride: reduceMotionOverride
+            )
+                ? .smooth(duration: 0.22)
+                : nil,
+            value: store.selectedID
+        )
     }
 }
 

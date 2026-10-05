@@ -392,6 +392,256 @@ final class BrowserChangeUITests: XCTestCase {
         )
     }
 
+    func testViewSourceShortcutOpensRedactedDiagnostics() {
+        let app = launchTask7App()
+
+        app.typeKey(
+            "u",
+            modifierFlags: [.command, .option]
+        )
+
+        XCTAssertTrue(
+            app.staticTexts["diagnostics-title"]
+                .waitForExistence(timeout: 2)
+        )
+        let snapshot = app.staticTexts["diagnostics-snapshot"]
+        XCTAssertTrue(snapshot.exists)
+        XCTAssertTrue(
+            accessibleText(of: snapshot).contains(
+                "Configuration schema"
+            )
+        )
+        XCTAssertFalse(
+            accessibleText(of: snapshot).contains("/private")
+        )
+        XCTAssertTrue(app.buttons["copy-diagnostics"].isHittable)
+        attachScreenshot(
+            named: "task7-diagnostics",
+            app: app
+        )
+    }
+
+    func testPreviewTimeMachineEvaluatesAndReturnsToNow() {
+        let app = launchTask7App()
+
+        app.typeKey(
+            "t",
+            modifierFlags: [.command, .option]
+        )
+
+        XCTAssertTrue(
+            app.staticTexts["time-machine-title"]
+                .waitForExistence(timeout: 2)
+        )
+        let input = app.textFields["time-machine-url"]
+        XCTAssertTrue(input.isHittable)
+        input.click()
+        input.typeText(
+            "https://example.com/private?secret=value"
+        )
+        app.buttons["time-machine-evaluate"].click()
+
+        XCTAssertTrue(
+            app.staticTexts["historical-result-target"]
+                .waitForExistence(timeout: 2)
+        )
+        XCTAssertEqual(
+            accessibleText(
+                of: app.staticTexts[
+                    "historical-result-target"
+                ]
+            ),
+            "Safari"
+        )
+        attachScreenshot(
+            named: "task7-time-machine",
+            app: app
+        )
+
+        app.buttons["return-to-now"].click()
+        XCTAssertTrue(
+            app.staticTexts["time-machine-title"]
+                .waitForNonExistence(timeout: 2)
+        )
+    }
+
+    func testFiveTapLivingHallShowsLiveFactsAndNetscapeFootnote() {
+        let app = launchTask7App()
+        let header = app.buttons["browsers-header"]
+        XCTAssertTrue(header.waitForExistence(timeout: 2))
+
+        for _ in 0..<5 {
+            header.click()
+        }
+
+        XCTAssertTrue(
+            app.staticTexts["living-hall-title"]
+                .waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(
+            app.staticTexts["hall-browser-com.apple.Safari"].exists
+        )
+        XCTAssertTrue(
+            app.staticTexts["hall-browser-com.google.Chrome"].exists
+        )
+        XCTAssertTrue(
+            app.staticTexts["Smart Routing fallback"].exists
+        )
+        app.buttons["hall-era-netscape"].click()
+        XCTAssertTrue(
+            app.staticTexts["netscape-footnote"]
+                .waitForExistence(timeout: 1)
+        )
+        attachScreenshot(
+            named: "task7-living-hall",
+            app: app
+        )
+    }
+
+    func testTask7LightAirlockRulesAndLeaseVisuals() {
+        let app = launchTask7App()
+
+        XCTAssertTrue(
+            app.staticTexts["workspace-title"]
+                .waitForExistence(timeout: 4)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["active-lease-title"]
+                .exists
+        )
+        XCTAssertTrue(app.buttons["end-browser-lease"].isHittable)
+        XCTAssertTrue(
+            app.checkBoxes["allow-automation-leases"].isHittable
+        )
+        XCTAssertTrue(
+            app.buttons["browser-row-Safari"].isHittable
+        )
+        XCTAssertGreaterThan(
+            sampledLuminance(
+                of: app.windows.firstMatch.screenshot().image
+            ),
+            0.5
+        )
+        attachScreenshot(named: "task7-light", app: app)
+        attachScreenshot(named: "task7-lease", app: app)
+
+        app.buttons["nav-airlock"].click()
+        let input = app.textViews["airlock-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
+        input.click()
+        input.typeText("https://example.com/review")
+        app.buttons["airlock-preview"].click()
+        XCTAssertTrue(app.buttons["airlock-open-in"].isHittable)
+        attachScreenshot(named: "task7-airlock", app: app)
+
+        app.buttons["nav-rules"].click()
+        XCTAssertTrue(
+            app.staticTexts["rules-title"]
+                .waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(app.buttons["Create rule"].isHittable)
+        attachScreenshot(named: "task7-rules", app: app)
+
+        app.buttons["nav-profiles"].click()
+        XCTAssertTrue(
+            app.staticTexts["profiles-title"]
+                .waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(app.buttons["Create profile"].isHittable)
+    }
+
+    func testTask7DarkLargeTextReducedMotionSmoke() {
+        let app = launchTask7App(
+            extraArguments: [
+                "--force-dark-appearance",
+                "--ui-testing-large-text",
+                "--ui-testing-reduce-motion",
+            ]
+        )
+
+        XCTAssertTrue(
+            app.staticTexts["workspace-title"]
+                .waitForExistence(timeout: 4)
+        )
+        XCTAssertTrue(app.buttons["nav-airlock"].isHittable)
+        XCTAssertTrue(app.buttons["nav-rules"].isHittable)
+        XCTAssertTrue(app.buttons["nav-profiles"].isHittable)
+        let screenshot = app.windows.firstMatch.screenshot()
+        XCTAssertLessThan(
+            sampledLuminance(of: screenshot.image),
+            0.5
+        )
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "task7-dark-large-text-reduced-motion"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testFailedAlwaysOpenTeachingKeepsChooserVisible() {
+        let app = launchTask7App(
+            extraArguments: [
+                "--ui-testing-history-failure",
+            ]
+        )
+
+        app.buttons["nav-airlock"].click()
+        let input = app.textViews["airlock-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
+        input.click()
+        input.typeText("https://example.com/private")
+        app.buttons["airlock-preview"].click()
+        app.buttons["airlock-open-in"].click()
+        app.checkBoxes["chooser-always"].click()
+        app.buttons["chooser-open-Safari"].click()
+
+        XCTAssertTrue(
+            app.staticTexts["browser-chooser-title"]
+                .waitForExistence(timeout: 2)
+        )
+        let error = app.staticTexts["chooser-error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 2))
+        XCTAssertTrue(
+            accessibleText(of: error).contains(
+                "the “Always open” rule was not saved"
+            )
+        )
+    }
+
+    private func launchTask7App(
+        extraArguments: [String] = []
+    ) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+            "--ui-testing-task7-fixture",
+            "--force-light-appearance",
+        ] + extraArguments
+        app.launch()
+        return app
+    }
+
+    private func attachScreenshot(
+        named name: String,
+        app: XCUIApplication
+    ) {
+        let attachment = XCTAttachment(
+            screenshot: app.windows.firstMatch.screenshot()
+        )
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func accessibleText(
+        of element: XCUIElement
+    ) -> String {
+        if !element.label.isEmpty {
+            return element.label
+        }
+        return element.value as? String ?? ""
+    }
+
     private func sampledLuminance(of image: NSImage) -> CGFloat {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),

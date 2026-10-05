@@ -24,6 +24,8 @@ final class BrowserStore {
     var selectedID: String?
     var workspaceDestination: WorkspaceDestination = .direct
     var showHall = false
+    var showDiagnostics = false
+    var showTimeMachine = false
 
     private(set) var browsers: [InstalledBrowser] = []
     private(set) var switchable: [InstalledBrowser] = []
@@ -44,6 +46,9 @@ final class BrowserStore {
     )
     private(set) var revision = 0
     private(set) var installedCount = 0
+    private(set) var timeMachineModel = PreviewTimeMachineModel(
+        snapshots: []
+    )
     @ObservationIgnored
     var onRoutingAvailabilityChanged: (@MainActor () -> Void)?
 
@@ -146,6 +151,51 @@ final class BrowserStore {
         )
     }
 
+    var diagnosticsSnapshot: DiagnosticsSnapshot {
+        let info = Bundle.main.infoDictionary
+        let appName = info?["CFBundleDisplayName"] as? String
+            ?? info?["CFBundleName"] as? String
+            ?? "BrowserChange"
+        let appVersion = info?["CFBundleShortVersionString"] as? String
+            ?? "Unknown"
+        let buildVersion = info?["CFBundleVersion"] as? String
+            ?? "Unknown"
+        let versions = environment.stateRepository
+            .inspectSchemaVersions()
+        var configuration = routingConfiguration
+        configuration.schemaVersion = versions.configuration
+            ?? configuration.schemaVersion
+        var journal = (try? environment.stateRepository
+            .inspectHandlerJournal()) ?? .fresh
+        journal.schemaVersion = versions.handlerJournal
+            ?? journal.schemaVersion
+        let historySchemaVersion = versions.configurationHistory
+            ?? ConfigurationHistory.currentSchemaVersion
+        return DiagnosticsSnapshot.make(
+            appName: appName,
+            appVersion: appVersion,
+            buildVersion: buildVersion,
+            browserChange: browserChange,
+            handlers: environment.systemBrowserHandler.currentHandlers(),
+            routingState: routingState,
+            configuration: configuration,
+            journal: journal,
+            historySchemaVersion: historySchemaVersion,
+            canUndo: canUndo || canUndoLease,
+            installedBrowsers: installed,
+            now: environment.now()
+        )
+    }
+
+    var livingHallModel: LivingBrowserHallModel {
+        LivingBrowserHallModel.make(
+            installedBrowsers: installed,
+            configuration: routingConfiguration,
+            defaultBundleID: defaultBundleID,
+            now: environment.now()
+        )
+    }
+
     var routingModeTitle: String {
         switch routingState {
         case .direct:
@@ -240,6 +290,42 @@ final class BrowserStore {
 
     func showWorkspace(_ destination: WorkspaceDestination) {
         workspaceDestination = destination
+    }
+
+    func openDiagnostics() {
+        showDiagnostics = true
+    }
+
+    func openTimeMachine() {
+        do {
+            let history = try environment.stateRepository
+                .inspectConfigurationHistory()
+            timeMachineModel = PreviewTimeMachineModel.make(
+                history: history,
+                installedBrowsers: installed
+            )
+        } catch {
+            timeMachineModel = PreviewTimeMachineModel(snapshots: [])
+            message = "BrowserChange could not read configuration history. Reopen the app to recover safely."
+        }
+        showTimeMachine = true
+    }
+
+    func returnToNow() {
+        showTimeMachine = false
+    }
+
+    func evaluateHistoricalURL(
+        _ rawURL: String,
+        snapshotID: UUID
+    ) -> HistoricalRoutingEvaluation {
+        timeMachineModel.evaluate(
+            rawURL,
+            snapshotID: snapshotID,
+            browserChange: browserChange,
+            installedBrowsers: environment.browserCatalog
+                .installedBrowsers()
+        )
     }
 
     func displayName(for browser: BrowserReference) -> String {
@@ -549,6 +635,20 @@ final class BrowserStore {
         always scope: DomainRuleScope? = nil,
         profileID: UUID? = nil
     ) async -> RoutingOutcome {
+        await openAirlockFromChooser(
+            item,
+            in: browser,
+            always: scope,
+            profileID: profileID
+        ).routingOutcome
+    }
+
+    func openAirlockFromChooser(
+        _ item: AirlockItem,
+        in browser: BrowserReference,
+        always scope: DomainRuleScope? = nil,
+        profileID: UUID? = nil
+    ) async -> AirlockChooserResult {
         reload(reconcilingLease: true)
         let outcome = await routingCoordinator.route(
             item.normalized.originalURL,
@@ -556,19 +656,53 @@ final class BrowserStore {
             explicitTarget: browser,
             availableTargets: availableBrowserReferences
         )
-        if case .opened(let openedBrowser) = outcome,
-           openedBrowser == browser,
-           let scope {
-            _ = createRule(
+        guard case .opened(let openedBrowser) = outcome,
+              openedBrowser == browser else {
+            updateMessage(for: outcome)
+            return AirlockChooserResult(
+                routingOutcome: outcome,
+                teachingRequested: scope != nil,
+                teachingSucceeded: false,
+                errorMessage: message
+            )
+        }
+
+        guard let scope else {
+            updateMessage(for: outcome)
+            return AirlockChooserResult(
+                routingOutcome: outcome,
+                teachingRequested: false,
+                teachingSucceeded: false,
+                errorMessage: nil
+            )
+        }
+
+        guard createRule(
                 domain: item.normalized.host,
                 scope: scope,
                 browser: browser,
                 profileID: profileID,
                 source: .airlock
+        ) != nil else {
+            let errorMessage = airlockTeachingFailureMessage(
+                browser: browser
+            )
+            message = errorMessage
+            return AirlockChooserResult(
+                routingOutcome: outcome,
+                teachingRequested: true,
+                teachingSucceeded: false,
+                errorMessage: errorMessage
             )
         }
-        updateMessage(for: outcome)
-        return outcome
+
+        message = "Opened the link in \(name(for: browser)) and saved the “Always open” rule."
+        return AirlockChooserResult(
+            routingOutcome: outcome,
+            teachingRequested: true,
+            teachingSucceeded: true,
+            errorMessage: nil
+        )
     }
 
     @discardableResult
@@ -923,6 +1057,19 @@ final class BrowserStore {
         case nil:
             "BrowserChange could not update the routing configuration."
         }
+    }
+
+    private func airlockTeachingFailureMessage(
+        browser: BrowserReference
+    ) -> String {
+        let prefix = "The link opened in \(name(for: browser)), but the “Always open” rule was not saved."
+        if message == "That profile is no longer available." {
+            return "\(prefix) Choose Global or another profile, then try again."
+        }
+        if message == "Enter a valid domain." {
+            return "\(prefix) Check the domain, then try again."
+        }
+        return "\(prefix) Reopen BrowserChange, then try again."
     }
 
     private var routingUnavailableMessage: String {

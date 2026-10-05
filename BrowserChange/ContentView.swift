@@ -33,10 +33,15 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $store.showHall) {
-            HallOfFameView(browserCount: store.installedCount)
-                .padding(28)
-                .frame(width: 460)
-                .presentationSizing(.fitted)
+            HallOfFameView(model: store.livingHallModel)
+        }
+        .sheet(isPresented: $store.showDiagnostics) {
+            DiagnosticsView()
+                .environment(store)
+        }
+        .sheet(isPresented: $store.showTimeMachine) {
+            PreviewTimeMachineView()
+                .environment(store)
         }
         .background {
             KeyCatcher()

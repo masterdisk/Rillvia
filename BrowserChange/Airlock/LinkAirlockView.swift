@@ -184,12 +184,17 @@ private struct BrowserChooserView: View {
     @State private var alwaysOpen = false
     @State private var scope: DomainRuleScope = .exactHost
     @State private var profileID: UUID?
+    @State private var errorMessage: String?
+    @State private var isOpening = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Open in…")
                     .font(.title2.weight(.semibold))
+                    .accessibilityIdentifier(
+                        "browser-chooser-title"
+                    )
                 Text(item.normalized.host)
                     .font(.callout.monospaced())
                     .foregroundStyle(.secondary)
@@ -215,19 +220,41 @@ private struct BrowserChooserView: View {
                 }
             }
 
+            if let errorMessage {
+                Label(
+                    errorMessage,
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("chooser-error")
+                .accessibilityLabel(errorMessage)
+            }
+
             Divider()
 
             ForEach(store.externalBrowsers) { browser in
                 Button {
                     let teachingScope = alwaysOpen ? scope : nil
+                    isOpening = true
+                    errorMessage = nil
                     Task {
-                        _ = await store.openAirlock(
-                            item,
-                            in: browser.reference,
-                            always: teachingScope,
-                            profileID: alwaysOpen ? profileID : nil
-                        )
-                        dismiss()
+                        let result = await store
+                            .openAirlockFromChooser(
+                                item,
+                                in: browser.reference,
+                                always: teachingScope,
+                                profileID: alwaysOpen
+                                    ? profileID
+                                    : nil
+                            )
+                        isOpening = false
+                        if result.shouldDismiss {
+                            dismiss()
+                        } else {
+                            errorMessage = result.errorMessage
+                        }
                     }
                 } label: {
                     HStack(spacing: 10) {
@@ -239,14 +266,21 @@ private struct BrowserChooserView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
+                .disabled(isOpening)
                 .accessibilityIdentifier("chooser-open-\(browser.name)")
             }
 
             Button("Cancel", role: .cancel) {
                 dismiss()
             }
+            .disabled(isOpening)
         }
         .padding(24)
         .frame(width: 420)
+        .onChange(of: alwaysOpen) {
+            if !alwaysOpen {
+                errorMessage = nil
+            }
+        }
     }
 }
