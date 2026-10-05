@@ -96,6 +96,9 @@ final class BrowserStore {
             self.reload()
             self.message = self.leaseEndedMessage
         }
+        intentBridge.onStateChanged = { [weak self] in
+            self?.reload()
+        }
         reload()
     }
 
@@ -227,7 +230,7 @@ final class BrowserStore {
 
     func refresh() {
         guard !isSwitching else { return }
-        reload()
+        reload(reconcilingLease: true)
     }
 
     func selectBrowser(_ id: String) {
@@ -458,7 +461,7 @@ final class BrowserStore {
     }
 
     func routeIncomingURL(_ url: URL) async -> IncomingURLDisposition {
-        reload()
+        reload(reconcilingLease: true)
         guard case .smartActive = routingState else {
             message = routingUnavailableMessage
             return .retryLater
@@ -530,7 +533,7 @@ final class BrowserStore {
     }
 
     func openAirlockNow(_ item: AirlockItem) async -> RoutingOutcome {
-        reload()
+        reload(reconcilingLease: true)
         let outcome = await routingCoordinator.route(
             item.normalized.originalURL,
             configuration: smartRoutingCoordinator.configuration,
@@ -546,7 +549,7 @@ final class BrowserStore {
         always scope: DomainRuleScope? = nil,
         profileID: UUID? = nil
     ) async -> RoutingOutcome {
-        reload()
+        reload(reconcilingLease: true)
         let outcome = await routingCoordinator.route(
             item.normalized.originalURL,
             configuration: smartRoutingCoordinator.configuration,
@@ -776,7 +779,7 @@ final class BrowserStore {
         guard !isSwitching else { return }
         transactionStatus = .recovering
         let routingStatus = await smartRoutingCoordinator.reconcile()
-        reload()
+        reload(reconcilingLease: true)
 
         if case .degraded(let issue) = routingStatus {
             transactionStatus = .degraded
@@ -953,6 +956,8 @@ final class BrowserStore {
             "Smart Routing is already configured."
         case .transitionCancelled:
             "The routing mode change was cancelled."
+        case .handlerTransitionInProgress:
+            "BrowserChange is still completing a web-link handler change."
         case .configurationPersistenceFailed:
             "BrowserChange could not save its routing configuration. Reopen the app to recover safely."
         case .handlerTransaction(let issue):
@@ -1015,13 +1020,15 @@ final class BrowserStore {
         }
     }
 
-    private func reload() {
+    private func reload(reconcilingLease: Bool = false) {
         installed = environment.browserCatalog.installedBrowsers()
         let handlers = environment.systemBrowserHandler.currentHandlers()
         handlerHealth = handlers.health(browserChange: browserChange)
-        let leaseReconciliation = browserLeaseCoordinator.reconcile(
-            availableTargets: availableBrowserReferences
-        )
+        let leaseReconciliation = reconcilingLease
+            ? browserLeaseCoordinator.reconcile(
+                availableTargets: availableBrowserReferences
+            )
+            : BrowserLeaseReconciliation(didExpire: false, issue: nil)
         let smartStatus = smartRoutingCoordinator.refreshOwnership()
         switch smartStatus {
         case .direct:

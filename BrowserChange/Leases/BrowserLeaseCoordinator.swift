@@ -121,6 +121,7 @@ final class BrowserLeaseCoordinator {
     private let systemHandler: any SystemBrowserHandling
     private let repository: StateRepository
     private let browserChange: BrowserReference
+    private let smartRoutingCoordinator: SmartRoutingCoordinator
     private let scheduler: any BrowserLeaseScheduling
     private let now: () -> Date
 
@@ -134,12 +135,14 @@ final class BrowserLeaseCoordinator {
         systemHandler: any SystemBrowserHandling,
         repository: StateRepository,
         browserChange: BrowserReference,
+        smartRoutingCoordinator: SmartRoutingCoordinator,
         scheduler: any BrowserLeaseScheduling,
         now: @escaping () -> Date = Date.init
     ) {
         self.systemHandler = systemHandler
         self.repository = repository
         self.browserChange = browserChange
+        self.smartRoutingCoordinator = smartRoutingCoordinator
         self.scheduler = scheduler
         self.now = now
     }
@@ -169,7 +172,8 @@ final class BrowserLeaseCoordinator {
         do {
             let current = try repository.loadConfiguration()
             configuration = current
-            guard try isVerifiedActiveSmart(configuration: current) else {
+            guard try smartRoutingCoordinator
+                .isVerifiedSmartRoutingActive(configuration: current) else {
                 return .failed(.smartRoutingUnavailable)
             }
             guard target != browserChange else {
@@ -376,20 +380,6 @@ final class BrowserLeaseCoordinator {
                 issue: .configurationPersistenceFailed
             )
         }
-    }
-
-    private func isVerifiedActiveSmart(
-        configuration: RoutingConfiguration
-    ) throws -> Bool {
-        guard configuration.mode == .smart,
-              let fallback = configuration.fallbackBrowser,
-              fallback != browserChange,
-              systemHandler.applicationURL(for: fallback) != nil,
-              try repository.loadHandlerJournal().pendingOperation == nil else {
-            return false
-        }
-        return systemHandler.currentHandlers()
-            .ownership(browserChange: browserChange) == .browserChange
     }
 
     private func isAvailable(

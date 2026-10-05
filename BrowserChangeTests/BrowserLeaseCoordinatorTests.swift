@@ -544,10 +544,22 @@ final class BrowserLeaseCoordinatorTests: XCTestCase {
         scheduler: FakeBrowserLeaseScheduler,
         now: @escaping () -> Date = Date.init
     ) -> BrowserLeaseCoordinator {
-        BrowserLeaseCoordinator(
+        let transactionCoordinator = HandlerTransactionCoordinator(
+            systemHandler: handler,
+            repository: repository,
+            browserChange: browserChange.browser
+        )
+        let smartRoutingCoordinator = SmartRoutingCoordinator(
+            systemHandler: handler,
+            repository: repository,
+            transactionCoordinator: transactionCoordinator,
+            browserChange: browserChange.browser
+        )
+        return BrowserLeaseCoordinator(
             systemHandler: handler,
             repository: repository,
             browserChange: browserChange.browser,
+            smartRoutingCoordinator: smartRoutingCoordinator,
             scheduler: scheduler,
             now: now
         )

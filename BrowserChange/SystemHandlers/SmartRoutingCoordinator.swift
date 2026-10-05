@@ -7,6 +7,7 @@ enum SmartRoutingIssue: Equatable, Sendable {
     case smartRoutingNotEnabled
     case smartRoutingAlreadyEnabled
     case transitionCancelled
+    case handlerTransitionInProgress
     case configurationPersistenceFailed
     case handlerTransaction(HandlerTransactionIssue)
 }
@@ -141,6 +142,9 @@ final class SmartRoutingCoordinator {
     func changeFallback(
         to fallback: BrowserReference
     ) -> SmartRoutingTransitionOutcome {
+        if let issue = configurationMutationIssue() {
+            return .failed(issue)
+        }
         guard configuration.mode == .smart else {
             return .failed(.smartRoutingNotEnabled)
         }
@@ -170,6 +174,9 @@ final class SmartRoutingCoordinator {
         _ desiredConfiguration: RoutingConfiguration,
         recordingSnapshot: Bool = true
     ) -> SmartRoutingTransitionOutcome {
+        if let issue = configurationMutationIssue() {
+            return .failed(issue)
+        }
         var desiredConfiguration = desiredConfiguration
         desiredConfiguration.schemaVersion =
             RoutingConfiguration.currentSchemaVersion
@@ -200,6 +207,17 @@ final class SmartRoutingCoordinator {
         }
         status = reconciledStatus()
         return status
+    }
+
+    func isVerifiedSmartRoutingActive(
+        configuration suppliedConfiguration: RoutingConfiguration? = nil
+    ) throws -> Bool {
+        let configuration = try suppliedConfiguration
+            ?? repository.loadConfiguration()
+        if case .active = try verifiedStatus(for: configuration) {
+            return true
+        }
+        return false
     }
 
     private func finish(
@@ -233,6 +251,26 @@ final class SmartRoutingCoordinator {
     }
 
     private func reconciledStatus() -> SmartRoutingStatus {
+        do {
+            return try verifiedStatus(for: configuration)
+        } catch {
+            return .degraded(.configurationPersistenceFailed)
+        }
+    }
+
+    private func verifiedStatus(
+        for configuration: RoutingConfiguration
+    ) throws -> SmartRoutingStatus {
+        if configuration.mode == .smart,
+           try repository.loadHandlerJournal().pendingOperation != nil {
+            return .degraded(.handlerTransitionInProgress)
+        }
+        return ownershipStatus(for: configuration)
+    }
+
+    private func ownershipStatus(
+        for configuration: RoutingConfiguration
+    ) -> SmartRoutingStatus {
         guard configuration.mode == .smart else {
             return .direct
         }
@@ -252,5 +290,15 @@ final class SmartRoutingCoordinator {
             return .active(fallback)
         }
         return .suspended(fallback)
+    }
+
+    func configurationMutationIssue() -> SmartRoutingIssue? {
+        do {
+            return try repository.loadHandlerJournal().pendingOperation == nil
+                ? nil
+                : .handlerTransitionInProgress
+        } catch {
+            return .configurationPersistenceFailed
+        }
     }
 }

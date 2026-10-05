@@ -17,6 +17,7 @@ enum BrowserChangeAutomationError: Error, Equatable, Sendable {
     case browserUnavailable
     case profileUnavailable
     case automationLeasePermissionDisabled
+    case handlerTransitionInProgress
     case noUndoAvailable
     case duplicateDispatch
     case launchFailed
@@ -39,6 +40,8 @@ extension BrowserChangeAutomationError: LocalizedError {
             "The selected routing profile is no longer available."
         case .automationLeasePermissionDisabled:
             "Browser lease automations are not allowed."
+        case .handlerTransitionInProgress:
+            "BrowserChange is still completing a web-link handler change."
         case .noUndoAvailable:
             "There is no previous browser change to restore."
         case .duplicateDispatch:
@@ -66,6 +69,8 @@ extension BrowserChangeAutomationError: LocalizedError {
             "Choose an enabled profile that still exists."
         case .automationLeasePermissionDisabled:
             "Turn on “Allow Shortcuts to start leases” in BrowserChange first."
+        case .handlerTransitionInProgress:
+            "Wait for the current routing mode change to finish, then try again."
         case .noUndoAvailable:
             "Start or end a lease, or make a Direct browser change, before running this shortcut."
         case .duplicateDispatch:
@@ -91,6 +96,8 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
     private let browserLeaseCoordinator: BrowserLeaseCoordinator
     private let routingCoordinator: RoutingCoordinator
     private let configurationEditor: RoutingConfigurationEditor
+
+    var onStateChanged: (@MainActor () -> Void)?
 
     init(
         browserCatalog: any BrowserCatalog,
@@ -168,13 +175,21 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
             }
             target = BrowserReference(bundleIdentifier: browserID)
         } else {
-            guard try isVerifiedSmartRoutingActive() else {
+            let isVerified: Bool
+            do {
+                isVerified = try smartRoutingCoordinator
+                    .isVerifiedSmartRoutingActive()
+            } catch {
+                throw BrowserChangeAutomationError.persistenceFailed
+            }
+            guard isVerified else {
                 throw BrowserChangeAutomationError
                     .smartRoutingUnavailable
             }
             _ = browserLeaseCoordinator.reconcile(
                 availableTargets: try availableBrowserReferences()
             )
+            onStateChanged?()
             target = nil
         }
 
@@ -230,9 +245,10 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         }
         switch smartRoutingCoordinator.applyConfiguration(configuration) {
         case .succeeded:
+            onStateChanged?()
             return "Using the \(profile.name) routing profile."
-        case .failed, .degraded:
-            throw BrowserChangeAutomationError.persistenceFailed
+        case .failed(let issue), .degraded(let issue):
+            throw automationError(for: issue)
         }
     }
 
@@ -245,6 +261,9 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         } catch {
             throw BrowserChangeAutomationError.persistenceFailed
         }
+        if let issue = smartRoutingCoordinator.configurationMutationIssue() {
+            throw automationError(for: issue)
+        }
         if configuration.allowAutomationLeases == isAllowed {
             return isAllowed
                 ? "Shortcuts may start browser leases."
@@ -254,11 +273,12 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         configuration.allowAutomationLeases = isAllowed
         switch smartRoutingCoordinator.applyConfiguration(configuration) {
         case .succeeded:
+            onStateChanged?()
             return isAllowed
                 ? "Shortcuts may now start browser leases."
                 : "Shortcuts can no longer start browser leases."
-        case .failed, .degraded:
-            throw BrowserChangeAutomationError.persistenceFailed
+        case .failed(let issue), .degraded(let issue):
+            throw automationError(for: issue)
         }
     }
 
@@ -285,6 +305,7 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
             throw BrowserChangeAutomationError.browserUnavailable
         }
 
+        defer { onStateChanged?() }
         switch browserLeaseCoordinator.startLease(
             to: BrowserReference(bundleIdentifier: browserID),
             preset: preset,
@@ -301,6 +322,7 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
     }
 
     func endBrowserLease() throws -> String {
+        defer { onStateChanged?() }
         switch browserLeaseCoordinator.endLease() {
         case .succeeded:
             return "Ended the browser lease."
@@ -312,6 +334,7 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
     }
 
     func restorePreviousBrowser() async throws -> String {
+        defer { onStateChanged?() }
         let reconciliation = browserLeaseCoordinator.reconcile(
             availableTargets: try availableBrowserReferences()
         )
@@ -372,6 +395,21 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         }
     }
 
+    private func automationError(
+        for issue: SmartRoutingIssue
+    ) -> BrowserChangeAutomationError {
+        switch issue {
+        case .handlerTransitionInProgress:
+            .handlerTransitionInProgress
+        case .configurationPersistenceFailed:
+            .persistenceFailed
+        case .missingFallback, .selfFallback, .fallbackUnavailable,
+                .smartRoutingNotEnabled, .smartRoutingAlreadyEnabled,
+                .transitionCancelled, .handlerTransaction:
+            .persistenceFailed
+        }
+    }
+
     private func availableBrowserReferences() throws
         -> Set<BrowserReference> {
         Set(
@@ -379,26 +417,6 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
                 BrowserReference(bundleIdentifier: $0.id)
             }
         )
-    }
-
-    private func isVerifiedSmartRoutingActive() throws -> Bool {
-        let configuration: RoutingConfiguration
-        let journal: HandlerOperationJournal
-        do {
-            configuration = try repository.loadConfiguration()
-            journal = try repository.loadHandlerJournal()
-        } catch {
-            throw BrowserChangeAutomationError.persistenceFailed
-        }
-        guard configuration.mode == .smart,
-              journal.pendingOperation == nil,
-              let fallback = configuration.fallbackBrowser,
-              fallback != browserChange,
-              systemHandler.applicationURL(for: fallback) != nil else {
-            return false
-        }
-        return systemHandler.currentHandlers()
-            .ownership(browserChange: browserChange) == .browserChange
     }
 
     private func name(for reference: BrowserReference) -> String {

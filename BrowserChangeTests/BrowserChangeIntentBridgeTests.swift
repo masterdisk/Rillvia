@@ -176,6 +176,133 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
         XCTAssertTrue(handler.setCalls.isEmpty)
     }
 
+    func testAutomaticOpenAndLeaseUseSharedVerifiedSmartInvariant() async throws {
+        struct Scenario {
+            let name: String
+            let configuration: RoutingConfiguration
+            let handlers: HTTPHandlerSnapshot
+            let hasPendingOperation: Bool
+            let expected: Bool
+        }
+        let smart = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.reference,
+            allowAutomationLeases: true
+        )
+        let scenarios = [
+            Scenario(
+                name: "active",
+                configuration: smart,
+                handlers: .same(application(browserChange)),
+                hasPendingOperation: false,
+                expected: true
+            ),
+            Scenario(
+                name: "direct",
+                configuration: RoutingConfiguration(
+                    fallbackBrowser: chrome.reference,
+                    allowAutomationLeases: true
+                ),
+                handlers: .same(application(chrome)),
+                hasPendingOperation: false,
+                expected: false
+            ),
+            Scenario(
+                name: "suspended",
+                configuration: smart,
+                handlers: .same(application(safari)),
+                hasPendingOperation: false,
+                expected: false
+            ),
+            Scenario(
+                name: "pending",
+                configuration: smart,
+                handlers: .same(application(browserChange)),
+                hasPendingOperation: true,
+                expected: false
+            ),
+            Scenario(
+                name: "missing fallback",
+                configuration: RoutingConfiguration(
+                    mode: .smart,
+                    allowAutomationLeases: true
+                ),
+                handlers: .same(application(browserChange)),
+                hasPendingOperation: false,
+                expected: false
+            ),
+            Scenario(
+                name: "self fallback",
+                configuration: RoutingConfiguration(
+                    mode: .smart,
+                    fallbackBrowser: browserChange.reference,
+                    allowAutomationLeases: true
+                ),
+                handlers: .same(application(browserChange)),
+                hasPendingOperation: false,
+                expected: false
+            ),
+            Scenario(
+                name: "unavailable fallback",
+                configuration: RoutingConfiguration(
+                    mode: .smart,
+                    fallbackBrowser: missing.reference,
+                    allowAutomationLeases: true
+                ),
+                handlers: .same(application(browserChange)),
+                hasPendingOperation: false,
+                expected: false
+            ),
+        ]
+
+        for (index, scenario) in scenarios.enumerated() {
+            try repository.saveConfiguration(scenario.configuration)
+            handler.handlers = scenario.handlers
+            let operationID = UUID()
+            let pending = scenario.hasPendingOperation
+                ? PendingHandlerOperation(
+                    id: operationID,
+                    startedAt: Date(timeIntervalSince1970: 1_900_000_000),
+                    kind: .smartActivation,
+                    desiredHandlers: .same(application(browserChange)),
+                    undoReceipt: HandlerUndoReceipt(
+                        operationID: operationID,
+                        issuedAt: Date(timeIntervalSince1970: 1_900_000_000),
+                        precondition: scenario.handlers,
+                        restore: .same(application(chrome))
+                    )
+                )
+                : nil
+            try repository.saveHandlerJournal(
+                HandlerOperationJournal(pendingOperation: pending)
+            )
+            let services = makeServices()
+            let verified = try services.smartRoutingCoordinator
+                .isVerifiedSmartRoutingActive()
+            let url = try XCTUnwrap(
+                URL(string: "https://example.com/parity-\(index)")
+            )
+            let automaticOpenAccepted =
+                (try? await services.intentBridge.openLink(
+                    url,
+                    browserID: nil
+                )) != nil
+            let leaseAccepted =
+                (try? services.intentBridge.startBrowserLease(
+                    browserID: safari.id,
+                    preset: .untilEnded
+                )) != nil
+
+            XCTAssertEqual(verified, scenario.expected, scenario.name)
+            XCTAssertEqual(
+                automaticOpenAccepted,
+                verified,
+                scenario.name
+            )
+            XCTAssertEqual(leaseAccepted, verified, scenario.name)
+        }
+    }
+
     func testOpenLinkReportsUnsupportedSelfAndMissingTargets() async throws {
         let bridge = makeBridge()
         let webURL = try XCTUnwrap(URL(string: "https://example.com"))
@@ -493,6 +620,198 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
         XCTAssertTrue(store.undoBrowserLeaseChange())
         XCTAssertNil(try repository.loadConfiguration().browserLease)
         XCTAssertTrue(handler.setCalls.isEmpty)
+    }
+
+    func testPendingHandlerTransitionRejectsConfigurationMutationsBeforeRecovery() async throws {
+        let work = RoutingProfile(name: "Work")
+        let personal = RoutingProfile(name: "Personal")
+        let pendingConfiguration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.reference,
+            profiles: [work, personal],
+            activeProfileID: work.id,
+            allowAutomationLeases: true
+        )
+        try repository.saveConfiguration(pendingConfiguration)
+        let operationID = UUID()
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(
+                pendingOperation: PendingHandlerOperation(
+                    id: operationID,
+                    startedAt: Date(timeIntervalSince1970: 1_900_000_000),
+                    kind: .smartActivation,
+                    desiredHandlers: .same(application(browserChange)),
+                    undoReceipt: HandlerUndoReceipt(
+                        operationID: operationID,
+                        issuedAt: Date(timeIntervalSince1970: 1_900_000_001),
+                        precondition: .same(application(browserChange)),
+                        restore: .same(application(chrome))
+                    ),
+                    completedSchemes: [.https, .http],
+                    configurationBefore: .fresh,
+                    configurationOnSuccess: pendingConfiguration
+                )
+            )
+        )
+        handler.handlers = .same(application(browserChange))
+        let services = makeServices()
+
+        XCTAssertThrowsError(
+            try services.intentBridge.setAutomationLeasesAllowed(false)
+        ) {
+            XCTAssertEqual(
+                $0 as? BrowserChangeAutomationError,
+                .handlerTransitionInProgress
+            )
+        }
+        XCTAssertThrowsError(
+            try services.intentBridge.setRoutingProfile(personal.id)
+        ) {
+            XCTAssertEqual(
+                $0 as? BrowserChangeAutomationError,
+                .handlerTransitionInProgress
+            )
+        }
+        XCTAssertEqual(
+            try repository.loadConfiguration(),
+            pendingConfiguration
+        )
+        XCTAssertTrue(
+            try repository.loadConfigurationHistory().entries.isEmpty
+        )
+
+        _ = await services.smartRoutingCoordinator.reconcile()
+
+        XCTAssertEqual(
+            try repository.loadConfiguration(),
+            pendingConfiguration,
+            "Recovery must not silently overwrite a mutation reported as successful."
+        )
+        XCTAssertNil(try repository.loadHandlerJournal().pendingOperation)
+    }
+
+    func testConcurrentTransitionCannotOverwriteConsentOrProfileMutations() async throws {
+        let work = RoutingProfile(name: "Work")
+        let personal = RoutingProfile(name: "Personal")
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                fallbackBrowser: chrome.reference,
+                profiles: [work, personal],
+                activeProfileID: work.id,
+                allowAutomationLeases: true
+            )
+        )
+        let services = makeServices()
+        var mutationErrors: [BrowserChangeAutomationError?] = []
+        handler.beforeSet = { [services] _, _ in
+            do {
+                if mutationErrors.isEmpty {
+                    _ = try services.intentBridge
+                        .setAutomationLeasesAllowed(false)
+                } else {
+                    _ = try services.intentBridge
+                        .setRoutingProfile(personal.id)
+                }
+                mutationErrors.append(nil)
+            } catch {
+                mutationErrors.append(error as? BrowserChangeAutomationError)
+            }
+        }
+
+        let outcome = await services.smartRoutingCoordinator.enable(
+            fallback: chrome.reference
+        )
+
+        XCTAssertEqual(outcome, .succeeded)
+        XCTAssertEqual(
+            mutationErrors,
+            [.handlerTransitionInProgress, .handlerTransitionInProgress]
+        )
+        let completed = try repository.loadConfiguration()
+        XCTAssertTrue(completed.allowAutomationLeases)
+        XCTAssertEqual(completed.activeProfileID, work.id)
+        XCTAssertNil(try repository.loadHandlerJournal().pendingOperation)
+        XCTAssertEqual(
+            try repository.loadConfigurationHistory().entries.count,
+            1
+        )
+    }
+
+    func testDeniedColdRuntimeLeaseDoesNotReconcileExpiredState() throws {
+        let expiredLease = BrowserLease(
+            browser: safari.reference,
+            startedAt: Date(timeIntervalSince1970: 100),
+            expiresAt: Date(timeIntervalSince1970: 200)
+        )
+        let original = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.reference,
+            browserLease: expiredLease,
+            allowAutomationLeases: false
+        )
+        try repository.saveConfiguration(original)
+        handler.handlers = .same(application(browserChange))
+        let runtime = BrowserChangeAppRuntime(
+            environment: makeEnvironment(),
+            browserChange: browserChange.reference,
+            registerIntentBridge: { _ in }
+        )
+
+        XCTAssertThrowsError(
+            try runtime.services.intentBridge.startBrowserLease(
+                browserID: safari.id,
+                preset: .untilEnded
+            )
+        )
+
+        XCTAssertEqual(try repository.loadConfiguration(), original)
+        XCTAssertTrue(
+            try repository.loadConfigurationHistory().entries.isEmpty
+        )
+    }
+
+    func testIntentMutationsPublishToStoreWithoutManualRefresh() async throws {
+        let work = RoutingProfile(name: "Work")
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.reference,
+                profiles: [work],
+                allowAutomationLeases: true
+            )
+        )
+        handler.handlers = .same(application(browserChange))
+        let runtime = BrowserChangeAppRuntime(
+            environment: makeEnvironment(),
+            browserChange: browserChange.reference,
+            registerIntentBridge: { _ in }
+        )
+        let bridge = runtime.services.intentBridge
+        let store = runtime.store
+
+        _ = try bridge.startBrowserLease(
+            browserID: safari.id,
+            preset: .untilEnded
+        )
+        XCTAssertEqual(
+            store.activeBrowserLease?.browser,
+            safari.reference
+        )
+
+        _ = try bridge.endBrowserLease()
+        XCTAssertNil(store.activeBrowserLease)
+
+        _ = try await bridge.restorePreviousBrowser()
+        XCTAssertEqual(
+            store.activeBrowserLease?.browser,
+            safari.reference
+        )
+
+        _ = try bridge.setRoutingProfile(work.id)
+        XCTAssertEqual(store.routingConfiguration.activeProfileID, work.id)
+
+        _ = try bridge.setAutomationLeasesAllowed(false)
+        XCTAssertFalse(store.allowsAutomationLeases)
     }
 
     func testStorePersistsAutomationLeasePermissionThroughSharedBridge() throws {

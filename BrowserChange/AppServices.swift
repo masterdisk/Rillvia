@@ -49,6 +49,7 @@ final class BrowserChangeServices {
             systemHandler: environment.systemBrowserHandler,
             repository: environment.stateRepository,
             browserChange: browserChange,
+            smartRoutingCoordinator: smartRoutingCoordinator,
             scheduler: environment.leaseScheduler,
             now: environment.now
         )

@@ -317,6 +317,7 @@ private struct RoutingModeCard: View {
                     .accessibilityIdentifier(
                         "allow-automation-leases"
                     )
+                    .disabled(store.isSwitching)
 
                     Text(
                         "Off by default. This permission never turns on Smart Routing; it only lets Shortcuts start a temporary lease while Smart Routing is verified active."
