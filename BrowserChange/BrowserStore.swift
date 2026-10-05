@@ -2,6 +2,15 @@ import AppKit
 import Foundation
 import Observation
 
+enum BrowserRoutingState: Equatable, Sendable {
+    case direct
+    case enabling(BrowserReference)
+    case smartActive(BrowserReference)
+    case smartSuspended(BrowserReference)
+    case disabling(BrowserReference)
+    case degraded(SmartRoutingIssue)
+}
+
 @MainActor
 @Observable
 final class BrowserStore {
@@ -17,9 +26,12 @@ final class BrowserStore {
     private(set) var canUndo = false
     private(set) var transactionStatus: HandlerTransactionStatus = .idle
     private(set) var handlerHealth: HTTPHandlerHealth
+    private(set) var routingState: BrowserRoutingState = .direct
     private(set) var revision = 0
     private(set) var installedCount = 0
     private(set) var board = PreviewBoard.empty
+    @ObservationIgnored
+    var onRoutingAvailabilityChanged: (@MainActor () -> Void)?
 
     private var installed: [InstalledBrowser] = []
     private var icons: [String: NSImage] = [:]
@@ -31,6 +43,8 @@ final class BrowserStore {
     private let environment: AppEnvironment
     private let browserChange: BrowserReference
     private let transactionCoordinator: HandlerTransactionCoordinator
+    private let smartRoutingCoordinator: SmartRoutingCoordinator
+    private let routingCoordinator: RoutingCoordinator
 
     private let quips: [(String) -> String] = [
         { "\($0) is already the default. The others can wait." },
@@ -46,9 +60,20 @@ final class BrowserStore {
                 ?? "com.browserchange.BrowserChange"
         )
         self.browserChange = browserChange
-        self.transactionCoordinator = HandlerTransactionCoordinator(
+        let transactionCoordinator = HandlerTransactionCoordinator(
             systemHandler: environment.systemBrowserHandler,
             repository: environment.stateRepository,
+            browserChange: browserChange
+        )
+        self.transactionCoordinator = transactionCoordinator
+        self.smartRoutingCoordinator = SmartRoutingCoordinator(
+            systemHandler: environment.systemBrowserHandler,
+            repository: environment.stateRepository,
+            transactionCoordinator: transactionCoordinator,
+            browserChange: browserChange
+        )
+        self.routingCoordinator = RoutingCoordinator(
+            launcher: environment.urlLauncher,
             browserChange: browserChange
         )
         self.handlerHealth = HTTPHandlerSnapshot.missing.health(
@@ -61,12 +86,58 @@ final class BrowserStore {
         transactionStatus.isBusy
     }
 
+    var isSmartRoutingConfigured: Bool {
+        smartRoutingCoordinator.configuration.mode == .smart
+    }
+
+    var routingModeTitle: String {
+        switch routingState {
+        case .direct:
+            "Direct"
+        case .enabling:
+            "Turning on Smart Routing"
+        case .smartActive:
+            "Smart Routing"
+        case .smartSuspended:
+            "Smart Routing suspended"
+        case .disabling:
+            "Turning off Smart Routing"
+        case .degraded:
+            "Routing needs attention"
+        }
+    }
+
+    var routingModeDetail: String {
+        switch routingState {
+        case .direct:
+            "Links open directly in the current system default browser."
+        case .enabling(let fallback):
+            "Waiting for macOS to make BrowserChange the web-link handler. \(name(for: fallback)) will remain the external fallback."
+        case .smartActive(let fallback):
+            "BrowserChange forwards web links immediately to \(name(for: fallback))."
+        case .smartSuspended(let fallback):
+            "The web-link handlers changed outside BrowserChange. Smart Routing will not reclaim them; \(name(for: fallback)) remains configured as the fallback."
+        case .disabling(let fallback):
+            "Waiting for macOS to make \(name(for: fallback)) the Direct default."
+        case .degraded(let issue):
+            smartRoutingMessage(for: issue)
+        }
+    }
+
+    var smartFallbackBrowser: InstalledBrowser? {
+        guard let fallback = smartRoutingCoordinator
+            .configuration.fallbackBrowser else {
+            return nil
+        }
+        return installed.first { $0.reference == fallback }
+    }
+
     var hasSplitHandlers: Bool {
         handlerHealth.hasSplitHandlers
     }
 
     var defaultBrowserName: String {
-        if hasSplitHandlers {
+        if hasSplitHandlers && !isSmartRoutingConfigured {
             return "Split web handlers"
         }
         return switchable.first { $0.id == defaultBundleID }?.name
@@ -146,6 +217,10 @@ final class BrowserStore {
             message = "Lynx lives in a terminal. This Mac wants a window."
             return
         }
+        if isSmartRoutingConfigured {
+            changeSmartFallback(to: browser)
+            return
+        }
         if !hasSplitHandlers, browser.id == defaultBundleID {
             message = quips[quipIndex % quips.count](browser.name)
             quipIndex += 1
@@ -158,8 +233,118 @@ final class BrowserStore {
         )
     }
 
+    func enableSmartRouting() async {
+        guard !isSwitching else { return }
+        guard !isSmartRoutingConfigured else {
+            message = "Smart Routing is already configured."
+            return
+        }
+
+        let fallback = handlerHealth.agreedExternalBrowser
+            ?? smartRoutingCoordinator.configuration.fallbackBrowser
+            ?? selectedBrowserForRepair?.reference
+        guard let fallback else {
+            message = smartRoutingMessage(for: .missingFallback)
+            return
+        }
+
+        routingState = .enabling(fallback)
+        transactionStatus = .switching
+        message = "Waiting for macOS to confirm Smart Routing ownership."
+        let outcome = await smartRoutingCoordinator.enable(
+            fallback: fallback
+        )
+        reload()
+
+        switch outcome {
+        case .succeeded:
+            transactionStatus = .idle
+            message = "Smart Routing is on with \(name(for: fallback)) as its fallback."
+            onRoutingAvailabilityChanged?()
+        case .failed(let issue):
+            transactionStatus = .idle
+            message = smartRoutingMessage(for: issue)
+        case .degraded(let issue):
+            transactionStatus = .degraded
+            routingState = .degraded(issue)
+            message = smartRoutingMessage(for: issue)
+        }
+    }
+
+    func disableSmartRouting() async {
+        guard !isSwitching else { return }
+        guard let fallback = smartRoutingCoordinator
+            .configuration.fallbackBrowser else {
+            message = smartRoutingMessage(for: .missingFallback)
+            return
+        }
+
+        routingState = .disabling(fallback)
+        transactionStatus = .switching
+        message = "Turning Smart Routing off and restoring the Direct default."
+        let outcome = await smartRoutingCoordinator.disable()
+        reload()
+
+        switch outcome {
+        case .succeeded:
+            transactionStatus = .idle
+            message = "Smart Routing is off. \(name(for: fallback)) is now the Direct default."
+        case .failed(let issue):
+            transactionStatus = .idle
+            message = smartRoutingMessage(for: issue)
+        case .degraded(let issue):
+            transactionStatus = .degraded
+            routingState = .degraded(issue)
+            message = smartRoutingMessage(for: issue)
+        }
+    }
+
+    func routeIncomingURL(_ url: URL) async -> IncomingURLDisposition {
+        reload()
+        guard case .smartActive = routingState else {
+            message = routingUnavailableMessage
+            return .retryLater
+        }
+
+        let outcome = await routingCoordinator.route(
+            url,
+            configuration: smartRoutingCoordinator.configuration
+        )
+        switch outcome {
+        case .opened:
+            return .consumed
+        case .rejected(.unsupportedURL):
+            message = "BrowserChange only routes HTTP and HTTPS links."
+            return .consumed
+        case .rejected(.duplicateDispatch):
+            message = "BrowserChange stopped a repeated link dispatch."
+            return .consumed
+        case .rejected(.selfTarget):
+            message = smartRoutingMessage(for: .selfFallback)
+            return .retryLater
+        case .rejected:
+            message = routingUnavailableMessage
+            return .retryLater
+        case .blocked(.launchFailed):
+            let fallbackName = smartFallbackBrowser?.name
+                ?? defaultBrowserName
+            message = "\(fallbackName) could not open the link. Reinstall it or choose another Smart Routing fallback."
+            return .retryLater
+        case .blocked(.missingFallback):
+            message = smartRoutingMessage(for: .missingFallback)
+            return .retryLater
+        case .blocked:
+            message = routingUnavailableMessage
+            return .retryLater
+        }
+    }
+
     func repairSelectedHandlers() async {
         guard !isSwitching else { return }
+        guard !isSmartRoutingConfigured else {
+            message = "Turn Smart Routing off before repairing Direct handlers."
+            return
+        }
         guard let browser = selectedBrowserForRepair else {
             message = "Choose an installed browser to repair both web-link handlers."
             return
@@ -199,10 +384,17 @@ final class BrowserStore {
     func activate() async {
         guard !isSwitching else { return }
         transactionStatus = .recovering
-        let outcome = await transactionCoordinator.recoverPendingOperation()
+        let routingStatus = await smartRoutingCoordinator.reconcile()
         reload()
 
-        switch outcome {
+        if case .degraded(let issue) = routingStatus {
+            transactionStatus = .degraded
+            routingState = .degraded(issue)
+            message = smartRoutingMessage(for: issue)
+            return
+        }
+
+        switch smartRoutingCoordinator.lastRecoveryOutcome {
         case .nothingPending:
             transactionStatus = .idle
         case .completedSwitch:
@@ -247,6 +439,62 @@ final class BrowserStore {
         }
     }
 
+    private func changeSmartFallback(to browser: InstalledBrowser) {
+        let outcome = smartRoutingCoordinator.changeFallback(
+            to: browser.reference
+        )
+        reload()
+        switch outcome {
+        case .succeeded:
+            message = "\(browser.name) is now the Smart Routing fallback."
+            onRoutingAvailabilityChanged?()
+        case .failed(let issue):
+            message = smartRoutingMessage(for: issue)
+        case .degraded(let issue):
+            transactionStatus = .degraded
+            routingState = .degraded(issue)
+            message = smartRoutingMessage(for: issue)
+        }
+    }
+
+    private var routingUnavailableMessage: String {
+        switch routingState {
+        case .smartSuspended:
+            "Smart Routing is suspended because the web-link handlers changed outside BrowserChange."
+        case .degraded(let issue):
+            smartRoutingMessage(for: issue)
+        case .direct:
+            "Smart Routing is off. Turn it on before routing links through BrowserChange."
+        case .enabling, .disabling:
+            "BrowserChange is still completing the routing mode change."
+        case .smartActive:
+            "Smart Routing is temporarily unavailable."
+        }
+    }
+
+    private func smartRoutingMessage(
+        for issue: SmartRoutingIssue
+    ) -> String {
+        switch issue {
+        case .missingFallback:
+            "Smart Routing needs an installed external fallback browser."
+        case .selfFallback:
+            "BrowserChange cannot be its own external fallback."
+        case .fallbackUnavailable:
+            "The Smart Routing fallback is not installed. Reinstall it or choose another browser."
+        case .smartRoutingNotEnabled:
+            "Smart Routing is not enabled."
+        case .smartRoutingAlreadyEnabled:
+            "Smart Routing is already configured."
+        case .transitionCancelled:
+            "The routing mode change was cancelled."
+        case .configurationPersistenceFailed:
+            "BrowserChange could not save its routing configuration. Reopen the app to recover safely."
+        case .handlerTransaction(let issue):
+            transactionMessage(for: issue)
+        }
+    }
+
     private func transactionMessage(
         for issue: HandlerTransactionIssue,
         browserName: String? = nil
@@ -281,15 +529,36 @@ final class BrowserStore {
         installed = environment.browserCatalog.installedBrowsers()
         let handlers = environment.systemBrowserHandler.currentHandlers()
         handlerHealth = handlers.health(browserChange: browserChange)
-        defaultBundleID = handlerHealth.agreedExternalBrowser?.bundleIdentifier
+        let smartStatus = smartRoutingCoordinator.refreshOwnership()
+        switch smartStatus {
+        case .direct:
+            routingState = .direct
+            defaultBundleID = handlerHealth
+                .agreedExternalBrowser?.bundleIdentifier
+        case .active(let fallback):
+            routingState = .smartActive(fallback)
+            defaultBundleID = fallback.bundleIdentifier
+        case .suspended(let fallback):
+            routingState = .smartSuspended(fallback)
+            defaultBundleID = fallback.bundleIdentifier
+        case .degraded(let issue):
+            routingState = .degraded(issue)
+            defaultBundleID = smartRoutingCoordinator
+                .configuration.fallbackBrowser?.bundleIdentifier
+                ?? handlerHealth.agreedExternalBrowser?.bundleIdentifier
+        }
         canUndo = transactionCoordinator.canUndo(currentHandlers: handlers)
         publish()
     }
 
-    private func name(for application: HandlerApplication) -> String {
+    private func name(for browser: BrowserReference) -> String {
         installed.first {
-            $0.id == application.browser.bundleIdentifier
-        }?.name ?? application.browser.bundleIdentifier
+            $0.id == browser.bundleIdentifier
+        }?.name ?? browser.bundleIdentifier
+    }
+
+    private func name(for application: HandlerApplication) -> String {
+        name(for: application.browser)
     }
 
     private func publish(now: Date = .now) {

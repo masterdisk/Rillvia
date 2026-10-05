@@ -52,12 +52,20 @@ private struct BrowserSidebarRow: View {
                 Image(systemName: "checkmark.circle.fill")
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.green)
-                    .accessibilityLabel("Current default")
+                    .accessibilityLabel(
+                        store.isSmartRoutingConfigured
+                            ? "Smart Routing fallback"
+                            : "Current default"
+                    )
             }
         }
         .padding(.vertical, 4)
         .accessibilityLabel(browser.name)
-        .accessibilityValue(isDefault ? "\(browser.version), current default" : browser.version)
+        .accessibilityValue(
+            isDefault
+                ? "\(browser.version), \(store.isSmartRoutingConfigured ? "Smart Routing fallback" : "current default")"
+                : browser.version
+        )
     }
 }
 
@@ -72,11 +80,17 @@ struct BrowserWorkspace: View {
                     Text("Choose where links open")
                         .font(.system(size: 30, weight: .semibold))
                         .accessibilityIdentifier("workspace-title")
-                    Text("Select a browser, then make it the default for web links on this Mac.")
+                    Text(
+                        store.isSmartRoutingConfigured
+                            ? "Select a browser to use as the external fallback. BrowserChange never opens links inside the app."
+                            : "Select a browser, then make it the default for web links on this Mac."
+                    )
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                RoutingModeCard()
 
                 HandlerTransactionControls()
 
@@ -97,6 +111,114 @@ struct BrowserWorkspace: View {
         }
         .scrollIndicators(.hidden)
         .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: store.selectedID)
+    }
+}
+
+private struct RoutingModeCard: View {
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        let fallback = store.smartFallbackBrowser
+            ?? store.switchable.first {
+                $0.id == store.defaultBundleID
+            }
+
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                HStack(spacing: 6) {
+                    Image(systemName: modeSymbol)
+                        .accessibilityHidden(true)
+                    Text(store.routingModeTitle)
+                        .accessibilityIdentifier("routing-mode-title")
+                }
+                .font(.headline)
+
+                Spacer()
+
+                Text(modeBadge)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(modeColor)
+            }
+
+            Text(store.routingModeDetail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("routing-mode-detail")
+
+            if store.isSmartRoutingConfigured {
+                if let fallback {
+                    Button(
+                        "Turn off Smart Routing and make \(fallback.name) the Direct default"
+                    ) {
+                        Task { await store.disableSmartRouting() }
+                    }
+                    .disabled(store.isSwitching)
+                    .accessibilityIdentifier("disable-smart-routing")
+                }
+            } else if let fallback {
+                Button(
+                    "Turn on Smart Routing with \(fallback.name)"
+                ) {
+                    Task { await store.enableSmartRouting() }
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(store.isSwitching)
+                .accessibilityIdentifier("enable-smart-routing")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(modeColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(modeColor.opacity(0.2))
+        }
+    }
+
+    private var modeSymbol: String {
+        switch store.routingState {
+        case .direct:
+            "arrow.up.right.square"
+        case .enabling, .disabling:
+            "arrow.triangle.2.circlepath"
+        case .smartActive:
+            "point.3.connected.trianglepath.dotted"
+        case .smartSuspended:
+            "pause.circle.fill"
+        case .degraded:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var modeBadge: String {
+        switch store.routingState {
+        case .direct:
+            "DIRECT"
+        case .enabling:
+            "ENABLING"
+        case .smartActive:
+            "ACTIVE"
+        case .smartSuspended:
+            "SUSPENDED"
+        case .disabling:
+            "DISABLING"
+        case .degraded:
+            "DEGRADED"
+        }
+    }
+
+    private var modeColor: Color {
+        switch store.routingState {
+        case .direct:
+            .secondary
+        case .enabling, .disabling:
+            .blue
+        case .smartActive:
+            .green
+        case .smartSuspended, .degraded:
+            .orange
+        }
     }
 }
 
@@ -122,7 +244,8 @@ private struct HandlerTransactionControls: View {
                             .accessibilityIdentifier("split-handler-warning")
                     }
 
-                    if let browser = store.selectedBrowserForRepair {
+                    if !store.isSmartRoutingConfigured,
+                       let browser = store.selectedBrowserForRepair {
                         Button("Repair handlers with \(browser.name)") {
                             Task { await store.repairSelectedHandlers() }
                         }
@@ -184,16 +307,40 @@ private struct BrowserLens: View {
                 }
 
                 if isDefault {
-                    Label("Current default", systemImage: "checkmark.circle.fill")
+                    Label(
+                        store.isSmartRoutingConfigured
+                            ? "Smart Routing fallback"
+                            : "Current default",
+                        systemImage: "checkmark.circle.fill"
+                    )
                         .font(.body.weight(.medium))
                         .foregroundStyle(.green)
-                    Text("Web links open here.")
+                    Text(
+                        store.isSmartRoutingConfigured
+                            ? "BrowserChange forwards unmatched web links here."
+                            : "Web links open here."
+                    )
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else if browser.isImaginary {
                     Text("Lynx lives in a terminal. This Mac wants a window.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                } else if store.isSmartRoutingConfigured {
+                    Text(
+                        "\(store.defaultBrowserName) is the current Smart Routing fallback."
+                    )
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    Button(
+                        "Use \(browser.name) as Smart Routing fallback"
+                    ) {
+                        Task { await store.makeDefault(browser) }
+                    }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
+                    .disabled(store.isSwitching)
                 } else {
                     Text(
                         store.hasSplitHandlers

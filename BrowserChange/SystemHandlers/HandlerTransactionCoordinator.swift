@@ -81,13 +81,49 @@ final class HandlerTransactionCoordinator {
     func switchDirect(
         to browser: BrowserReference
     ) async -> HandlerTransactionOutcome {
+        await switchHandlers(
+            to: browser,
+            kind: .direct,
+            permitsBrowserChange: false
+        )
+    }
+
+    func activateSmartRouting(
+        configuration: RoutingConfiguration
+    ) async -> HandlerTransactionOutcome {
+        await switchHandlers(
+            to: browserChange,
+            kind: .smartActivation,
+            permitsBrowserChange: true,
+            configurationOnSuccess: configuration
+        )
+    }
+
+    func deactivateSmartRouting(
+        to browser: BrowserReference,
+        configuration: RoutingConfiguration
+    ) async -> HandlerTransactionOutcome {
+        await switchHandlers(
+            to: browser,
+            kind: .smartDeactivation,
+            permitsBrowserChange: false,
+            configurationOnSuccess: configuration
+        )
+    }
+
+    private func switchHandlers(
+        to browser: BrowserReference,
+        kind: HandlerOperationKind,
+        permitsBrowserChange: Bool,
+        configurationOnSuccess: RoutingConfiguration? = nil
+    ) async -> HandlerTransactionOutcome {
         let recovery = await recoverPendingOperation()
         if case .degraded(let issue) = recovery {
             return .degraded(issue)
         }
 
         let baseline = systemHandler.currentHandlers()
-        guard browser != browserChange,
+        guard (permitsBrowserChange || browser != browserChange),
               let applicationURL = systemHandler.applicationURL(for: browser)
         else {
             return .failed(.targetUnavailable)
@@ -114,12 +150,20 @@ final class HandlerTransactionCoordinator {
         var operation = PendingHandlerOperation(
             id: operationID,
             startedAt: now(),
-            kind: .direct,
+            kind: kind,
             desiredHandlers: desired,
-            undoReceipt: receipt
+            undoReceipt: receipt,
+            configurationBefore: configurationOnSuccess == nil
+                ? nil
+                : (try? repository.loadConfiguration()),
+            configurationOnSuccess: configurationOnSuccess
         )
 
         do {
+            if configurationOnSuccess != nil,
+               operation.configurationBefore == nil {
+                return .failed(.statePersistenceFailed)
+            }
             var journal = try loadJournal()
             journal.pendingOperation = operation
             try repository.saveHandlerJournal(journal)
@@ -191,17 +235,10 @@ final class HandlerTransactionCoordinator {
                 systemHandler.currentHandlers(),
                 operation.desiredHandlers
             ) {
-                journal.pendingOperation = nil
-                switch operation.kind {
-                case .direct:
-                    journal.undoReceipt = operation.undoReceipt
-                case .undo:
-                    journal.undoReceipt = nil
-                }
-                try repository.saveHandlerJournal(journal)
-                return operation.kind == .direct
-                    ? .completedSwitch
-                    : .completedUndo
+                try complete(operation: operation, journal: &journal)
+                return operation.kind == .undo
+                    ? .completedUndo
+                    : .completedSwitch
             }
 
             switch await reconcile(operation: operation, journal: &journal) {
@@ -328,15 +365,8 @@ final class HandlerTransactionCoordinator {
             )
         }
 
-        journal.pendingOperation = nil
-        switch operation.kind {
-        case .direct:
-            journal.undoReceipt = operation.undoReceipt
-        case .undo:
-            journal.undoReceipt = nil
-        }
         do {
-            try repository.saveHandlerJournal(journal)
+            try complete(operation: operation, journal: &journal)
             return .succeeded
         } catch {
             return .degraded(.statePersistenceFailed)
@@ -410,13 +440,33 @@ final class HandlerTransactionCoordinator {
             return .failed
         }
 
-        journal.pendingOperation = nil
         do {
+            if let configuration = operation.configurationBefore {
+                try repository.saveConfiguration(configuration)
+            }
+            journal.pendingOperation = nil
             try repository.saveHandlerJournal(journal)
         } catch {
             return .failed
         }
         return sawExternalChange ? .externalChange : .restored
+    }
+
+    private func complete(
+        operation: PendingHandlerOperation,
+        journal: inout HandlerOperationJournal
+    ) throws {
+        if let configuration = operation.configurationOnSuccess {
+            try repository.saveConfiguration(configuration)
+        }
+        journal.pendingOperation = nil
+        switch operation.kind {
+        case .direct:
+            journal.undoReceipt = operation.undoReceipt
+        case .undo, .smartActivation, .smartDeactivation:
+            journal.undoReceipt = nil
+        }
+        try repository.saveHandlerJournal(journal)
     }
 
     private func loadJournal() throws -> HandlerOperationJournal {

@@ -24,13 +24,27 @@ struct MenuPanel: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        let fallback = store.smartFallbackBrowser
+            ?? store.switchable.first {
+                $0.id == store.defaultBundleID
+            }
+
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(store.defaultBrowserName)
+                Text(store.routingModeTitle)
                     .font(.headline)
-                Text("Choose the one links open in.")
+                    .accessibilityIdentifier("menu-routing-mode-title")
+                Text(
+                    store.isSmartRoutingConfigured
+                        ? "\(store.defaultBrowserName) is the external fallback."
+                        : "\(store.defaultBrowserName) is the Direct default."
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text(store.routingModeDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 8)
             .padding(.top, 4)
@@ -51,7 +65,8 @@ struct MenuPanel: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if let browser = store.selectedBrowserForRepair {
+                    if !store.isSmartRoutingConfigured,
+                       let browser = store.selectedBrowserForRepair {
                         Button("Repair handlers with \(browser.name)") {
                             Task { await store.repairSelectedHandlers() }
                         }
@@ -60,6 +75,34 @@ struct MenuPanel: View {
                 }
                 .padding(8)
                 .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            if store.isSmartRoutingConfigured {
+                if let fallback {
+                    Button {
+                        Task { await store.disableSmartRouting() }
+                    } label: {
+                        Label(
+                            "Turn off Smart Routing and make \(fallback.name) the Direct default",
+                            systemImage: "arrow.up.right.square"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(store.isSwitching)
+                }
+            } else if let fallback {
+                Button {
+                    Task { await store.enableSmartRouting() }
+                } label: {
+                    Label(
+                        "Turn on Smart Routing with \(fallback.name)",
+                        systemImage: "point.3.connected.trianglepath.dotted"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(store.isSwitching)
             }
 
             if store.switchable.count > 7 {
@@ -144,7 +187,11 @@ private struct BrowserMenuRow: View {
                 if isDefault {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
-                        .accessibilityLabel("Default")
+                        .accessibilityLabel(
+                            store.isSmartRoutingConfigured
+                                ? "Smart Routing fallback"
+                                : "Default"
+                        )
                 }
             }
             .padding(.horizontal, 8)
@@ -159,6 +206,11 @@ private struct BrowserMenuRow: View {
         .disabled(store.isSwitching)
         .onHover { hovering = $0 }
         .accessibilityLabel(browser.name)
+        .accessibilityValue(
+            isDefault && store.isSmartRoutingConfigured
+                ? "Smart Routing fallback"
+                : ""
+        )
         .accessibilityAddTraits(isDefault ? .isSelected : [])
     }
 }

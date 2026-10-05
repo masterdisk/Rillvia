@@ -129,6 +129,72 @@ final class BrowserChangeUITests: XCTestCase {
         )
     }
 
+    func testSmartRoutingModeAndFallbackTransitionsAreExplicit() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["routing-mode-title"].waitForExistence(timeout: 4)
+        )
+        XCTAssertTrue(app.staticTexts["Direct"].exists)
+
+        let enable = app.buttons[
+            "Turn on Smart Routing with Google Chrome"
+        ]
+        XCTAssertTrue(enable.waitForExistence(timeout: 2))
+        enable.click()
+
+        XCTAssertTrue(
+            app.staticTexts["Smart Routing"].waitForExistence(timeout: 2)
+        )
+        XCTAssertTrue(
+            app.buttons[
+                "Turn off Smart Routing and make Google Chrome the Direct default"
+            ].exists
+        )
+
+        app.staticTexts["Safari"].firstMatch.click()
+        let useSafari = app.buttons[
+            "Use Safari as Smart Routing fallback"
+        ]
+        XCTAssertTrue(useSafari.waitForExistence(timeout: 2))
+        useSafari.click()
+
+        let disable = app.buttons[
+            "Turn off Smart Routing and make Safari the Direct default"
+        ]
+        XCTAssertTrue(disable.waitForExistence(timeout: 2))
+        disable.click()
+
+        XCTAssertTrue(
+            app.staticTexts["Direct"].waitForExistence(timeout: 2)
+        )
+    }
+
+    func testConfiguredSmartWithExternalHandlersDisplaysSuspendedState() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+            "--ui-testing-smart-suspended",
+        ]
+        app.launch()
+
+        let modeTitle = app.staticTexts["routing-mode-title"]
+        XCTAssertTrue(modeTitle.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Smart Routing suspended"].exists)
+        XCTAssertTrue(app.staticTexts["routing-mode-detail"].exists)
+        XCTAssertTrue(
+            app.buttons[
+                "Turn off Smart Routing and make Google Chrome the Direct default"
+            ].exists
+        )
+    }
+
     private func sampledLuminance(of image: NSImage) -> CGFloat {
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),

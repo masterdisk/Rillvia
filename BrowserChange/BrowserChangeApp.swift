@@ -5,6 +5,19 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var store: BrowserStore?
     var openMainWindow: (() -> Void)?
+    private let incomingURLQueue: IncomingURLQueue
+    private var isPreparedForIncomingURLs = false
+    private var isPreparingForIncomingURLs = false
+
+    override init() {
+        self.incomingURLQueue = IncomingURLQueue()
+        super.init()
+    }
+
+    init(incomingURLQueue: IncomingURLQueue) {
+        self.incomingURLQueue = incomingURLQueue
+        super.init()
+    }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         #if DEBUG
@@ -15,7 +28,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        Task { await store?.activate() }
+        Task { await prepareForIncomingURLs() }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        incomingURLQueue.enqueue(urls)
+        Task {
+            if isPreparedForIncomingURLs {
+                await incomingURLQueue.drain()
+            } else {
+                await prepareForIncomingURLs()
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -27,6 +51,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openMainWindow?()
         }
         return true
+    }
+
+    func connect(
+        store: BrowserStore,
+        openMainWindow: @escaping () -> Void
+    ) {
+        self.store = store
+        self.openMainWindow = openMainWindow
+        incomingURLQueue.attach { [weak store] url in
+            guard let store else {
+                return .retryLater
+            }
+            return await store.routeIncomingURL(url)
+        }
+        store.onRoutingAvailabilityChanged = { [weak self] in
+            guard let self else { return }
+            Task { await self.incomingURLQueue.drain() }
+        }
+    }
+
+    func prepareForIncomingURLs() async {
+        guard let store, !isPreparingForIncomingURLs else {
+            return
+        }
+        isPreparingForIncomingURLs = true
+        await store.activate()
+        isPreparedForIncomingURLs = true
+        isPreparingForIncomingURLs = false
+        await incomingURLQueue.drain()
     }
 }
 
@@ -70,14 +123,13 @@ private struct RootView: View {
     var body: some View {
         ContentView()
             .onAppear {
-                delegate.store = store
-                delegate.openMainWindow = {
+                delegate.connect(store: store) {
                     openWindow(id: "main")
                     NSApp.activate()
                 }
             }
             .task {
-                await store.activate()
+                await delegate.prepareForIncomingURLs()
             }
     }
 }

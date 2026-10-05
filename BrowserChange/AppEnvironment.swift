@@ -4,12 +4,27 @@ struct AppEnvironment {
     var browserCatalog: any BrowserCatalog
     var systemBrowserHandler: any SystemBrowserHandling
     var stateRepository: StateRepository
+    var urlLauncher: any ExternalURLLaunching
+
+    init(
+        browserCatalog: any BrowserCatalog,
+        systemBrowserHandler: any SystemBrowserHandling,
+        stateRepository: StateRepository,
+        urlLauncher: (any ExternalURLLaunching)? = nil
+    ) {
+        self.browserCatalog = browserCatalog
+        self.systemBrowserHandler = systemBrowserHandler
+        self.stateRepository = stateRepository
+        self.urlLauncher = urlLauncher ?? systemBrowserHandler
+    }
 
     static func live() -> AppEnvironment {
-        AppEnvironment(
+        let systemHandler = SystemBrowserHandler()
+        return AppEnvironment(
             browserCatalog: WorkspaceBrowserCatalog(),
-            systemBrowserHandler: SystemBrowserHandler(),
-            stateRepository: StateRepository()
+            systemBrowserHandler: systemHandler,
+            stateRepository: StateRepository(),
+            urlLauncher: systemHandler
         )
     }
 
@@ -46,6 +61,11 @@ struct AppEnvironment {
             browser: safari.reference,
             applicationURL: safari.appURL
         )
+        let browserChange = BrowserReference(
+            bundleIdentifier: Bundle.main.bundleIdentifier
+                ?? "com.browserchange.BrowserChange"
+        )
+        let browserChangeURL = Bundle.main.bundleURL
         let handlers: HTTPHandlerSnapshot
         if arguments.contains("--ui-testing-split-handlers") {
             handlers = HTTPHandlerSnapshot(
@@ -60,6 +80,7 @@ struct AppEnvironment {
             applications: [
                 safari.reference: safari.appURL,
                 chrome.reference: chrome.appURL,
+                browserChange: browserChangeURL,
             ]
         )
         let stateDirectory = FileManager.default.temporaryDirectory
@@ -67,11 +88,21 @@ struct AppEnvironment {
                 "BrowserChange-UITests-\(ProcessInfo.processInfo.processIdentifier)",
                 isDirectory: true
             )
+        let repository = StateRepository(baseDirectory: stateDirectory)
+        if arguments.contains("--ui-testing-smart-suspended") {
+            try? repository.saveConfiguration(
+                RoutingConfiguration(
+                    mode: .smart,
+                    fallbackBrowser: chrome.reference
+                )
+            )
+        }
 
         return AppEnvironment(
             browserCatalog: UITestBrowserCatalog(browsers: [safari, chrome]),
             systemBrowserHandler: handler,
-            stateRepository: StateRepository(baseDirectory: stateDirectory)
+            stateRepository: repository,
+            urlLauncher: handler
         )
     }
     #endif

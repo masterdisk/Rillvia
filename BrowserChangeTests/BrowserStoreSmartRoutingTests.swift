@@ -1,0 +1,318 @@
+import AppKit
+import Foundation
+import XCTest
+@testable import BrowserChange
+
+@MainActor
+final class BrowserStoreSmartRoutingTests: XCTestCase {
+    private enum TestLaunchError: Error {
+        case unavailable
+    }
+
+    private let browserChange = InstalledBrowser(
+        id: "com.browserchange.BrowserChange",
+        name: "BrowserChange",
+        version: "1.0",
+        appURL: URL(fileURLWithPath: "/Applications/BrowserChange.app")
+    )
+    private let chrome = InstalledBrowser(
+        id: "com.google.Chrome",
+        name: "Google Chrome",
+        version: "140",
+        appURL: URL(
+            fileURLWithPath: "/Applications/Google Chrome.app"
+        )
+    )
+    private let safari = InstalledBrowser(
+        id: "com.apple.Safari",
+        name: "Safari",
+        version: "26",
+        appURL: URL(fileURLWithPath: "/Applications/Safari.app")
+    )
+
+    private var directory: URL!
+    private var repository: StateRepository!
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "BrowserStoreSmartRoutingTests-\(UUID().uuidString)"
+            )
+        repository = StateRepository(baseDirectory: directory)
+    }
+
+    override func tearDownWithError() throws {
+        if let directory {
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    func testFreshStoreReconcilesAsDirect() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let store = makeStore(handler: handler)
+
+        await store.activate()
+
+        XCTAssertEqual(store.routingState, .direct)
+        XCTAssertEqual(store.defaultBundleID, chrome.id)
+        XCTAssertEqual(store.routingModeTitle, "Direct")
+        XCTAssertTrue(handler.setCalls.isEmpty)
+    }
+
+    func testSmartActivationSeedsFallbackAndMarksItAsChosenBrowser() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let store = makeStore(handler: handler)
+
+        await store.enableSmartRouting()
+
+        XCTAssertEqual(
+            store.routingState,
+            .smartActive(chrome.reference)
+        )
+        XCTAssertEqual(store.defaultBundleID, chrome.id)
+        XCTAssertEqual(store.routingModeTitle, "Smart Routing")
+        XCTAssertEqual(handler.handlers, .same(application(for: browserChange)))
+        XCTAssertEqual(store.message, "Smart Routing is on with Google Chrome as its fallback.")
+    }
+
+    func testSmartExternalOwnershipPublishesSuspendedWithoutReclaiming() async throws {
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.reference
+            )
+        )
+        let handler = makeHandler(handlers: .same(application(for: safari)))
+        let store = makeStore(handler: handler)
+
+        await store.activate()
+
+        XCTAssertEqual(
+            store.routingState,
+            .smartSuspended(chrome.reference)
+        )
+        XCTAssertEqual(store.defaultBundleID, chrome.id)
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        XCTAssertTrue(store.routingModeDetail.contains("changed outside"))
+    }
+
+    func testSuspendedSplitHandlersStillDisplayConfiguredFallback() async throws {
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.reference
+            )
+        )
+        let handler = makeHandler(
+            handlers: HTTPHandlerSnapshot(
+                http: application(for: safari),
+                https: application(for: browserChange)
+            )
+        )
+        let store = makeStore(handler: handler)
+
+        await store.activate()
+
+        XCTAssertEqual(
+            store.routingState,
+            .smartSuspended(chrome.reference)
+        )
+        XCTAssertEqual(store.defaultBrowserName, "Google Chrome")
+        XCTAssertEqual(store.defaultBundleID, chrome.id)
+    }
+
+    func testChoosingBrowserInSmartModeOnlyChangesFallback() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let store = makeStore(handler: handler)
+        await store.enableSmartRouting()
+        let activationCalls = handler.setCalls
+
+        await store.makeDefault(safari)
+
+        XCTAssertEqual(handler.setCalls, activationCalls)
+        XCTAssertEqual(handler.handlers, .same(application(for: browserChange)))
+        XCTAssertEqual(
+            store.routingState,
+            .smartActive(safari.reference)
+        )
+        XCTAssertEqual(store.defaultBundleID, safari.id)
+        XCTAssertEqual(store.message, "Safari is now the Smart Routing fallback.")
+    }
+
+    func testChangingFallbackSignalsAQueuedURLRetry() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let store = makeStore(handler: handler)
+        await store.enableSmartRouting()
+        var retryWasRequested = false
+        store.onRoutingAvailabilityChanged = {
+            retryWasRequested = true
+        }
+
+        await store.makeDefault(safari)
+
+        XCTAssertTrue(retryWasRequested)
+    }
+
+    func testDisablingSmartRoutingMakesFallbackTheDirectDefault() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let store = makeStore(handler: handler)
+        await store.enableSmartRouting()
+
+        await store.disableSmartRouting()
+
+        XCTAssertEqual(handler.handlers, .same(application(for: chrome)))
+        XCTAssertEqual(store.routingState, .direct)
+        XCTAssertEqual(store.defaultBundleID, chrome.id)
+        XCTAssertEqual(
+            store.message,
+            "Smart Routing is off. Google Chrome is now the Direct default."
+        )
+    }
+
+    func testIncomingWebURLDispatchesToFallbackWithoutPersistingURLData() async throws {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let launcher = FakeURLLauncher()
+        let store = makeStore(handler: handler, launcher: launcher)
+        let url = URL(
+            string: "https://example.com/private/path?secret=value"
+        )!
+        await store.enableSmartRouting()
+
+        let disposition = await store.routeIncomingURL(url)
+
+        XCTAssertEqual(disposition, .consumed)
+        XCTAssertEqual(
+            launcher.calls,
+            [.init(url: url, browser: chrome.reference)]
+        )
+        let persistedText = try persistedStateText()
+        XCTAssertFalse(persistedText.contains("example.com"))
+        XCTAssertFalse(persistedText.contains("private"))
+        XCTAssertFalse(persistedText.contains("secret"))
+    }
+
+    func testUnsupportedIncomingURLIsRejectedAndNotLaunched() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let launcher = FakeURLLauncher()
+        let store = makeStore(handler: handler, launcher: launcher)
+        await store.enableSmartRouting()
+
+        let disposition = await store.routeIncomingURL(
+            URL(fileURLWithPath: "/tmp/private.txt")
+        )
+
+        XCTAssertEqual(disposition, .consumed)
+        XCTAssertTrue(launcher.calls.isEmpty)
+        XCTAssertEqual(
+            store.message,
+            "BrowserChange only routes HTTP and HTTPS links."
+        )
+    }
+
+    func testUnlaunchableFallbackStopsAndSurfacesRecoveryMessage() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let launcher = FakeURLLauncher()
+        launcher.error = TestLaunchError.unavailable
+        let store = makeStore(handler: handler, launcher: launcher)
+        await store.enableSmartRouting()
+
+        let disposition = await store.routeIncomingURL(
+            URL(string: "https://example.com/retry")!
+        )
+
+        XCTAssertEqual(disposition, .retryLater)
+        XCTAssertEqual(launcher.calls.count, 1)
+        XCTAssertEqual(
+            store.message,
+            "Google Chrome could not open the link. Reinstall it or choose another Smart Routing fallback."
+        )
+    }
+
+    func testIncomingURLReconcilesExternalOwnershipBeforeDispatch() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let launcher = FakeURLLauncher()
+        let store = makeStore(handler: handler, launcher: launcher)
+        await store.enableSmartRouting()
+        handler.handlers = .same(application(for: safari))
+
+        let disposition = await store.routeIncomingURL(
+            URL(string: "https://example.com/late-event")!
+        )
+
+        XCTAssertEqual(disposition, .retryLater)
+        XCTAssertTrue(launcher.calls.isEmpty)
+        XCTAssertEqual(
+            store.routingState,
+            .smartSuspended(chrome.reference)
+        )
+        XCTAssertEqual(handler.setCalls.count, 2)
+    }
+
+    private func makeStore(
+        handler: FakeSystemBrowserHandler,
+        launcher: FakeURLLauncher? = nil
+    ) -> BrowserStore {
+        let launcher = launcher ?? FakeURLLauncher()
+        return BrowserStore(
+            environment: AppEnvironment(
+                browserCatalog: FakeBrowserCatalog(
+                    browsers: [chrome, safari]
+                ),
+                systemBrowserHandler: handler,
+                stateRepository: repository,
+                urlLauncher: launcher
+            )
+        )
+    }
+
+    private func makeHandler(
+        handlers: HTTPHandlerSnapshot
+    ) -> FakeSystemBrowserHandler {
+        FakeSystemBrowserHandler(
+            handlers: handlers,
+            applications: [
+                browserChange.reference: browserChange.appURL,
+                chrome.reference: chrome.appURL,
+                safari.reference: safari.appURL,
+            ]
+        )
+    }
+
+    private func application(
+        for browser: InstalledBrowser
+    ) -> HandlerApplication {
+        HandlerApplication(
+            browser: browser.reference,
+            applicationURL: browser.appURL
+        )
+    }
+
+    private func persistedStateText() throws -> String {
+        let names = try FileManager.default.contentsOfDirectory(
+            atPath: directory.path
+        )
+        return try names.map { name in
+            let url = directory.appendingPathComponent(name)
+            return String(
+                data: try Data(contentsOf: url),
+                encoding: .utf8
+            ) ?? ""
+        }.joined(separator: "\n")
+    }
+}
+
+@MainActor
+final class AppDelegateIncomingURLTests: XCTestCase {
+    func testAppDelegateQueuesOpenEventsBeforeStoreAttachment() {
+        let queue = IncomingURLQueue()
+        let delegate = AppDelegate(incomingURLQueue: queue)
+        let urls = [
+            URL(string: "https://example.com/first")!,
+            URL(string: "http://example.com/second")!,
+        ]
+
+        delegate.application(NSApplication.shared, open: urls)
+
+        XCTAssertEqual(queue.pendingCount, 2)
+    }
+}

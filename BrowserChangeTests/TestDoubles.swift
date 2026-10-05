@@ -83,3 +83,21 @@ final class FakeSystemBrowserHandler: SystemBrowserHandling {
         openCalls.append((url, browser))
     }
 }
+
+@MainActor
+final class FakeURLLauncher: ExternalURLLaunching {
+    struct Call: Equatable {
+        var url: URL
+        var browser: BrowserReference
+    }
+
+    var error: Error?
+    private(set) var calls: [Call] = []
+
+    func open(_ url: URL, with browser: BrowserReference) async throws {
+        calls.append(Call(url: url, browser: browser))
+        if let error {
+            throw error
+        }
+    }
+}

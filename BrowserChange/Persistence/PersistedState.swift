@@ -19,6 +19,8 @@ struct HandlerUndoReceipt: Codable, Equatable, Sendable {
 enum HandlerOperationKind: String, Codable, Equatable, Sendable {
     case direct
     case undo
+    case smartActivation
+    case smartDeactivation
 }
 
 struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
@@ -31,6 +33,9 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
     var completedSchemes: [WebScheme] = []
     /// The write intent persisted before mutating Launch Services.
     var inFlightScheme: WebScheme?
+    /// Smart transitions keep configuration coupled to handler verification.
+    var configurationBefore: RoutingConfiguration?
+    var configurationOnSuccess: RoutingConfiguration?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -40,6 +45,8 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
         case undoReceipt
         case completedSchemes
         case inFlightScheme
+        case configurationBefore
+        case configurationOnSuccess
     }
 
     init(
@@ -49,7 +56,9 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
         desiredHandlers: HTTPHandlerSnapshot,
         undoReceipt: HandlerUndoReceipt,
         completedSchemes: [WebScheme] = [],
-        inFlightScheme: WebScheme? = nil
+        inFlightScheme: WebScheme? = nil,
+        configurationBefore: RoutingConfiguration? = nil,
+        configurationOnSuccess: RoutingConfiguration? = nil
     ) {
         self.id = id
         self.startedAt = startedAt
@@ -58,6 +67,8 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
         self.undoReceipt = undoReceipt
         self.completedSchemes = completedSchemes
         self.inFlightScheme = inFlightScheme
+        self.configurationBefore = configurationBefore
+        self.configurationOnSuccess = configurationOnSuccess
     }
 
     init(from decoder: Decoder) throws {
@@ -84,11 +95,19 @@ struct PendingHandlerOperation: Codable, Equatable, Identifiable, Sendable {
             WebScheme.self,
             forKey: .inFlightScheme
         )
+        configurationBefore = try values.decodeIfPresent(
+            RoutingConfiguration.self,
+            forKey: .configurationBefore
+        )
+        configurationOnSuccess = try values.decodeIfPresent(
+            RoutingConfiguration.self,
+            forKey: .configurationOnSuccess
+        )
     }
 }
 
 struct HandlerOperationJournal: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 3
+    static let currentSchemaVersion = 4
 
     var schemaVersion: Int
     var pendingOperation: PendingHandlerOperation?
