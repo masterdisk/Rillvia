@@ -74,4 +74,47 @@ final class AirlockParserTests: XCTestCase {
         XCTAssertEqual(result.items[0].warnings, [.idnOrPunycode])
         XCTAssertTrue(result.wasTextTruncated)
     }
+
+    func testPreservesValidTerminalParenthesisInDetectedURL() throws {
+        let original = "https://en.wikipedia.org/wiki/Function_(mathematics)"
+        let result = AirlockParser().parse(text: "Read \(original)")
+
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(item.originalText, original)
+        XCTAssertEqual(
+            item.normalized.originalURL.absoluteString,
+            original
+        )
+    }
+
+    func testDiscardsURLIntersectingTextLimitInsteadOfStagingPrefix() {
+        let prefix = "Read "
+        let original = "https://example.com/a-long-path"
+        let parser = AirlockParser(
+            maxTextLength: prefix.count + 20,
+            maxURLCount: 10
+        )
+
+        let result = parser.parse(text: prefix + original)
+
+        XCTAssertTrue(result.wasTextTruncated)
+        XCTAssertTrue(result.items.isEmpty)
+        XCTAssertEqual(result.rejectedCandidateCount, 1)
+    }
+
+    func testPreservesCompleteURLThatEndsAtTextLimit() throws {
+        let original = "https://example.com/complete"
+        let parser = AirlockParser(
+            maxTextLength: original.count,
+            maxURLCount: 10
+        )
+
+        let result = parser.parse(text: original + " ignored")
+
+        XCTAssertEqual(
+            try XCTUnwrap(result.items.first).originalText,
+            original
+        )
+        XCTAssertTrue(result.wasTextTruncated)
+    }
 }

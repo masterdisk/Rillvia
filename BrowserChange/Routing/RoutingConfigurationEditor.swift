@@ -39,15 +39,36 @@ struct RoutingConfigurationEditor {
         }
 
         let timestamp = now()
-        let rule = DomainRule(
-            domain: normalizedDomain,
-            scope: scope,
-            browser: browser,
-            profileID: profileID,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-            source: source
-        )
+        let matchingRules = configuration.domainRules.filter {
+            normalizedIdentityDomain(for: $0) == normalizedDomain
+                && $0.scope == scope
+                && $0.profileID == profileID
+        }
+        let rule: DomainRule
+        if var survivor = matchingRules.max(by: lowerRulePriority) {
+            survivor.revision =
+                (matchingRules.map(\.revision).max() ?? survivor.revision) + 1
+            survivor.domain = normalizedDomain
+            survivor.browser = browser
+            survivor.isEnabled = true
+            survivor.updatedAt = timestamp
+            survivor.source = source
+            let matchingIDs = Set(matchingRules.map(\.id))
+            configuration.domainRules.removeAll {
+                matchingIDs.contains($0.id)
+            }
+            rule = survivor
+        } else {
+            rule = DomainRule(
+                domain: normalizedDomain,
+                scope: scope,
+                browser: browser,
+                profileID: profileID,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+                source: source
+            )
+        }
         configuration.schemaVersion = RoutingConfiguration.currentSchemaVersion
         configuration.domainRules.append(rule)
         return rule
@@ -219,6 +240,23 @@ struct RoutingConfigurationEditor {
             throw RoutingConfigurationIssue.invalidName
         }
         return result
+    }
+
+    private func normalizedIdentityDomain(for rule: DomainRule) -> String? {
+        try? URLNormalizer.normalizeHost(rule.domain)
+    }
+
+    private func lowerRulePriority(
+        _ lhs: DomainRule,
+        _ rhs: DomainRule
+    ) -> Bool {
+        if lhs.revision != rhs.revision {
+            return lhs.revision < rhs.revision
+        }
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt < rhs.updatedAt
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
     private func touchRule(

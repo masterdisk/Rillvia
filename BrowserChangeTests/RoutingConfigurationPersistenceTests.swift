@@ -7,6 +7,8 @@ final class RoutingConfigurationPersistenceTests: XCTestCase {
         bundleIdentifier: "com.browserchange.BrowserChange"
     )
     private let safari = BrowserReference(bundleIdentifier: "com.apple.Safari")
+    private let chrome = BrowserReference(bundleIdentifier: "com.google.Chrome")
+    private let firefox = BrowserReference(bundleIdentifier: "org.mozilla.firefox")
 
     func testTask3SchemaMigratesWithoutCreatingSyntheticRules() throws {
         let directory = temporaryDirectory()
@@ -159,6 +161,136 @@ final class RoutingConfigurationPersistenceTests: XCTestCase {
             )
         }
         XCTAssertTrue(configuration.domainRules.isEmpty)
+    }
+
+    func testTeachingExactRuleReplacesLegacyDuplicatesAcrossIDs() throws {
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        let editor = RoutingConfigurationEditor(
+            browserChange: browserChange,
+            now: { now }
+        )
+        var configuration = RoutingConfiguration(
+            domainRules: [
+                DomainRule(
+                    revision: 7,
+                    domain: "Example.COM.",
+                    browser: safari,
+                    isEnabled: false
+                ),
+                DomainRule(
+                    revision: 9,
+                    domain: "example.com",
+                    browser: firefox
+                ),
+            ]
+        )
+
+        let taught = try editor.createRule(
+            domain: "EXAMPLE.com",
+            browser: chrome,
+            source: .airlock,
+            in: &configuration
+        )
+
+        XCTAssertEqual(configuration.domainRules, [taught])
+        XCTAssertEqual(taught.domain, "example.com")
+        XCTAssertEqual(taught.browser, chrome)
+        XCTAssertEqual(taught.revision, 10)
+        XCTAssertTrue(taught.isEnabled)
+        XCTAssertEqual(taught.source, .airlock)
+        XCTAssertEqual(taught.updatedAt, now)
+    }
+
+    func testTeachingProfileRuleDoesNotShadowOrReplaceOtherProfiles() throws {
+        let profileID = UUID()
+        let otherProfileID = UUID()
+        let editor = RoutingConfigurationEditor(browserChange: browserChange)
+        var configuration = RoutingConfiguration(
+            domainRules: [
+                DomainRule(
+                    revision: 4,
+                    domain: "example.com",
+                    browser: safari,
+                    profileID: profileID
+                ),
+                DomainRule(
+                    revision: 20,
+                    domain: "example.com",
+                    browser: firefox
+                ),
+                DomainRule(
+                    revision: 30,
+                    domain: "example.com",
+                    browser: firefox,
+                    profileID: otherProfileID
+                ),
+            ],
+            profiles: [
+                RoutingProfile(id: profileID, name: "Work"),
+                RoutingProfile(id: otherProfileID, name: "Personal"),
+            ]
+        )
+
+        let taught = try editor.createRule(
+            domain: "example.com",
+            browser: chrome,
+            profileID: profileID,
+            source: .airlock,
+            in: &configuration
+        )
+
+        XCTAssertEqual(taught.profileID, profileID)
+        XCTAssertEqual(taught.browser, chrome)
+        XCTAssertEqual(taught.revision, 5)
+        XCTAssertEqual(configuration.domainRules.count, 3)
+        XCTAssertEqual(
+            configuration.domainRules.first { $0.profileID == nil }?.browser,
+            firefox
+        )
+        XCTAssertEqual(
+            configuration.domainRules.first {
+                $0.profileID == otherProfileID
+            }?.browser,
+            firefox
+        )
+    }
+
+    func testTeachingSubdomainRuleDoesNotUpsertExactRule() throws {
+        let editor = RoutingConfigurationEditor(browserChange: browserChange)
+        var configuration = RoutingConfiguration(
+            domainRules: [
+                DomainRule(
+                    revision: 40,
+                    domain: "example.com",
+                    browser: safari
+                ),
+                DomainRule(
+                    revision: 6,
+                    domain: "example.com",
+                    scope: .includeSubdomains,
+                    browser: firefox
+                ),
+            ]
+        )
+
+        let taught = try editor.createRule(
+            domain: "example.com",
+            scope: .includeSubdomains,
+            browser: chrome,
+            source: .airlock,
+            in: &configuration
+        )
+
+        XCTAssertEqual(taught.scope, .includeSubdomains)
+        XCTAssertEqual(taught.browser, chrome)
+        XCTAssertEqual(taught.revision, 7)
+        XCTAssertEqual(configuration.domainRules.count, 2)
+        XCTAssertEqual(
+            configuration.domainRules.first {
+                $0.scope == .exactHost
+            }?.browser,
+            safari
+        )
     }
 
     private func temporaryDirectory() -> URL {

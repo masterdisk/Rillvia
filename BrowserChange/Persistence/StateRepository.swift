@@ -69,12 +69,14 @@ final class StateRepository {
 
     func saveConfigurationSnapshot(
         _ configuration: RoutingConfiguration,
+        snapshotID: UUID = UUID(),
         recordedAt: Date = .now,
         historyLimit: Int = 50
     ) throws {
         let previousHistory = try loadConfigurationHistory()
         let history = appendingSnapshot(
             of: configuration,
+            snapshotID: snapshotID,
             recordedAt: recordedAt,
             historyLimit: historyLimit,
             to: previousHistory
@@ -94,11 +96,13 @@ final class StateRepository {
 
     func appendConfigurationSnapshot(
         _ configuration: RoutingConfiguration,
+        snapshotID: UUID = UUID(),
         recordedAt: Date = .now,
         historyLimit: Int = 50
     ) throws {
         let history = appendingSnapshot(
             of: configuration,
+            snapshotID: snapshotID,
             recordedAt: recordedAt,
             historyLimit: historyLimit,
             to: try loadConfigurationHistory()
@@ -130,18 +134,24 @@ final class StateRepository {
 
     private func appendingSnapshot(
         of configuration: RoutingConfiguration,
+        snapshotID: UUID,
         recordedAt: Date,
         historyLimit: Int,
         to history: ConfigurationHistory
     ) -> ConfigurationHistory {
         var history = history
-        history.entries.append(
-            ConfigurationHistoryEntry(
-                id: UUID(),
-                recordedAt: recordedAt,
-                configuration: configuration
-            )
+        let entry = ConfigurationHistoryEntry(
+            id: snapshotID,
+            recordedAt: recordedAt,
+            configuration: configuration
         )
+        if let index = history.entries.firstIndex(
+            where: { $0.id == snapshotID }
+        ) {
+            history.entries[index] = entry
+        } else {
+            history.entries.append(entry)
+        }
         let limit = max(0, historyLimit)
         if history.entries.count > limit {
             history.entries = Array(history.entries.suffix(limit))

@@ -41,7 +41,7 @@ struct AirlockParseResult: Equatable, Sendable {
 }
 
 struct AirlockParser: Sendable {
-    /// Text beyond this character count is ignored before URL extraction.
+    /// Links beyond this character count are ignored during URL extraction.
     static let defaultMaxTextLength = 100_000
     /// At most this many unique valid links are staged in one operation.
     static let defaultMaxURLCount = 20
@@ -59,13 +59,18 @@ struct AirlockParser: Sendable {
 
     func parse(text: String) -> AirlockParseResult {
         let wasTextTruncated = text.count > maxTextLength
-        let boundedText = String(text.prefix(maxTextLength))
-        return parse(
-            candidates: extractCandidates(from: boundedText).map {
+        let extracted = extractCandidates(
+            from: text,
+            endingAtCharacter: min(text.count, maxTextLength)
+        )
+        var result = parse(
+            candidates: extracted.candidates.map {
                 ($0, URL(string: $0))
             },
             wasTextTruncated: wasTextTruncated
         )
+        result.rejectedCandidateCount += extracted.boundaryRejections
+        return result
     }
 
     func parse(urls: [URL]) -> AirlockParseResult {
@@ -133,28 +138,47 @@ struct AirlockParser: Sendable {
         )
     }
 
-    private func extractCandidates(from text: String) -> [String] {
-        let pattern = #"(?i)\b[a-z][a-z0-9+.-]*://[^\s<>"']+"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else {
-            return []
+    private func extractCandidates(
+        from text: String,
+        endingAtCharacter boundaryOffset: Int
+    ) -> (candidates: [String], boundaryRejections: Int) {
+        guard let detector = try? NSDataDetector(
+            types: NSTextCheckingResult.CheckingType.link.rawValue
+        ) else {
+            return ([], 0)
         }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        return expression.matches(in: text, range: range).compactMap { match in
-            guard let matchRange = Range(match.range, in: text) else {
-                return nil
-            }
-            return trimSentencePunctuation(String(text[matchRange]))
-        }
-    }
+        let lookaheadLength = min(
+            text.count - boundaryOffset,
+            Self.boundaryLookaheadLength
+        )
+        let scanLength = boundaryOffset + lookaheadLength
+        let scanText = String(text.prefix(scanLength))
+        let boundary = scanText.index(
+            scanText.startIndex,
+            offsetBy: boundaryOffset
+        )
+        let range = NSRange(
+            scanText.startIndex..<scanText.endIndex,
+            in: scanText
+        )
+        var candidates: [String] = []
+        var boundaryRejections = 0
 
-    private func trimSentencePunctuation(_ candidate: String) -> String {
-        var result = candidate
-        let punctuation = CharacterSet(charactersIn: ".,;!?)]}")
-        while let scalar = result.unicodeScalars.last,
-              punctuation.contains(scalar) {
-            result.removeLast()
+        for match in detector.matches(in: scanText, range: range) {
+            guard let matchRange = Range(match.range, in: scanText) else {
+                continue
+            }
+            if matchRange.lowerBound < boundary,
+               matchRange.upperBound > boundary {
+                boundaryRejections += 1
+                continue
+            }
+            guard matchRange.upperBound <= boundary else {
+                continue
+            }
+            candidates.append(String(scanText[matchRange]))
         }
-        return result
+        return (candidates, boundaryRejections)
     }
 
     private func warnings(
@@ -210,4 +234,6 @@ struct AirlockParser: Sendable {
         "utm_source",
         "utm_term",
     ]
+
+    private static let boundaryLookaheadLength = 8_192
 }

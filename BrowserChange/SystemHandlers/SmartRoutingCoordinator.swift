@@ -200,13 +200,7 @@ final class SmartRoutingCoordinator {
         switch outcome {
         case .succeeded:
             reloadConfigurationAndStatus()
-            do {
-                try repository.appendConfigurationSnapshot(configuration)
-                return .succeeded
-            } catch {
-                status = .degraded(.configurationPersistenceFailed)
-                return .degraded(.configurationPersistenceFailed)
-            }
+            return .succeeded
         case .cancelled:
             reloadConfigurationAndStatus()
             return .failed(.transitionCancelled)

@@ -457,7 +457,11 @@ final class HandlerTransactionCoordinator {
         journal: inout HandlerOperationJournal
     ) throws {
         if let configuration = operation.configurationOnSuccess {
-            try repository.saveConfiguration(configuration)
+            try repository.saveConfigurationSnapshot(
+                configuration,
+                snapshotID: operation.id,
+                recordedAt: operation.startedAt
+            )
         }
         journal.pendingOperation = nil
         switch operation.kind {

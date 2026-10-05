@@ -12,6 +12,12 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
     private let browserChange = BrowserReference(
         bundleIdentifier: "com.browserchange.BrowserChange"
     )
+    private let browserChangeApplication = HandlerApplication(
+        browser: BrowserReference(
+            bundleIdentifier: "com.browserchange.BrowserChange"
+        ),
+        applicationURL: URL(fileURLWithPath: "/Applications/BrowserChange.app")
+    )
     private let chrome = HandlerApplication(
         browser: BrowserReference(bundleIdentifier: "com.google.Chrome"),
         applicationURL: URL(fileURLWithPath: "/Applications/Google Chrome.app")
@@ -211,6 +217,126 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         let journal = try repository.loadHandlerJournal()
         XCTAssertNil(journal.pendingOperation)
         XCTAssertEqual(journal.undoReceipt, receipt)
+    }
+
+    func testSmartTransitionCompletionRecordsConfigurationHistory() async throws {
+        let before = RoutingConfiguration(
+            mode: .direct,
+            fallbackBrowser: chrome.browser
+        )
+        let desired = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.browser
+        )
+        try repository.saveConfiguration(before)
+        let handler = makeHandler(handlers: .same(chrome))
+        let coordinator = makeCoordinator(handler: handler)
+
+        let outcome = await coordinator.activateSmartRouting(
+            configuration: desired
+        )
+
+        XCTAssertEqual(outcome, .succeeded)
+        XCTAssertEqual(try repository.loadConfiguration(), desired)
+        let history = try repository.loadConfigurationHistory()
+        XCTAssertEqual(history.entries.count, 1)
+        XCTAssertEqual(history.entries.first?.id, operationID)
+        XCTAssertEqual(history.entries.first?.recordedAt, now)
+        XCTAssertEqual(history.entries.first?.configuration, desired)
+    }
+
+    func testRecoveryRecordsSuccessfulSmartConfigurationHistory() async throws {
+        let before = RoutingConfiguration(
+            mode: .direct,
+            fallbackBrowser: chrome.browser
+        )
+        let desired = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.browser
+        )
+        try repository.saveConfiguration(before)
+        let pending = PendingHandlerOperation(
+            id: operationID,
+            startedAt: now,
+            kind: .smartActivation,
+            desiredHandlers: .same(browserChangeApplication),
+            undoReceipt: makeReceipt(
+                precondition: .same(browserChangeApplication),
+                restore: .same(chrome)
+            ),
+            completedSchemes: [.https, .http],
+            configurationBefore: before,
+            configurationOnSuccess: desired
+        )
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(pendingOperation: pending)
+        )
+        let coordinator = makeCoordinator(
+            handler: makeHandler(handlers: .same(browserChangeApplication))
+        )
+
+        let outcome = await coordinator.recoverPendingOperation()
+
+        XCTAssertEqual(outcome, .completedSwitch)
+        XCTAssertEqual(try repository.loadConfiguration(), desired)
+        let history = try repository.loadConfigurationHistory()
+        XCTAssertEqual(history.entries.count, 1)
+        XCTAssertEqual(history.entries.first?.id, operationID)
+        XCTAssertEqual(history.entries.first?.configuration, desired)
+        XCTAssertNil(try repository.loadHandlerJournal().pendingOperation)
+    }
+
+    func testRecoveryDoesNotDuplicateSnapshotAfterCrashBeforeJournalClear() async throws {
+        let before = RoutingConfiguration(
+            mode: .direct,
+            fallbackBrowser: chrome.browser
+        )
+        let desired = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: chrome.browser
+        )
+        try repository.saveConfigurationHistory(
+            ConfigurationHistory(
+                entries: [
+                    ConfigurationHistoryEntry(
+                        id: operationID,
+                        recordedAt: now,
+                        configuration: desired
+                    ),
+                ]
+            )
+        )
+        try repository.saveConfiguration(desired)
+        let pending = PendingHandlerOperation(
+            id: operationID,
+            startedAt: now,
+            kind: .smartActivation,
+            desiredHandlers: .same(browserChangeApplication),
+            undoReceipt: makeReceipt(
+                precondition: .same(browserChangeApplication),
+                restore: .same(chrome)
+            ),
+            completedSchemes: [.https, .http],
+            configurationBefore: before,
+            configurationOnSuccess: desired
+        )
+        try repository.saveHandlerJournal(
+            HandlerOperationJournal(pendingOperation: pending)
+        )
+        let coordinator = makeCoordinator(
+            handler: makeHandler(handlers: .same(browserChangeApplication))
+        )
+
+        let firstRecovery = await coordinator.recoverPendingOperation()
+        let secondRecovery = await coordinator.recoverPendingOperation()
+
+        XCTAssertEqual(firstRecovery, .completedSwitch)
+        XCTAssertEqual(secondRecovery, .nothingPending)
+
+        let history = try repository.loadConfigurationHistory()
+        XCTAssertEqual(history.entries.count, 1)
+        XCTAssertEqual(history.entries.first?.id, operationID)
+        XCTAssertEqual(history.entries.first?.configuration, desired)
     }
 
     func testRecoveryRestoresDirectSchemeThatWasInFlightAtCrash() async throws {
@@ -458,6 +584,8 @@ final class HandlerTransactionCoordinatorTests: XCTestCase {
         FakeSystemBrowserHandler(
             handlers: handlers,
             applications: [
+                browserChangeApplication.browser:
+                    browserChangeApplication.applicationURL,
                 chrome.browser: chrome.applicationURL,
                 safari.browser: safari.applicationURL,
                 firefox.browser: firefox.applicationURL,
