@@ -35,6 +35,7 @@ final class BrowserStore {
     private(set) var routingState: BrowserRoutingState = .direct
     private(set) var activeBrowserLease: BrowserLease?
     private(set) var canUndoLease = false
+    private(set) var allowsAutomationLeases = false
     private(set) var airlockResult = AirlockParseResult(
         items: [],
         rejectedCandidateCount: 0,
@@ -60,6 +61,7 @@ final class BrowserStore {
     private let browserLeaseCoordinator: BrowserLeaseCoordinator
     private let routingCoordinator: RoutingCoordinator
     private let configurationEditor: RoutingConfigurationEditor
+    private let intentBridge: BrowserChangeIntentBridge
 
     private let quips: [(String) -> String] = [
         { "\($0) is already the default. The others can wait." },
@@ -72,44 +74,22 @@ final class BrowserStore {
         self.init(environment: .live())
     }
 
-    init(environment: AppEnvironment) {
-        self.environment = environment
-        let browserChange = BrowserReference(
-            bundleIdentifier: Bundle.main.bundleIdentifier
-                ?? "com.browserchange.BrowserChange"
-        )
-        self.browserChange = browserChange
-        let transactionCoordinator = HandlerTransactionCoordinator(
-            systemHandler: environment.systemBrowserHandler,
-            repository: environment.stateRepository,
-            browserChange: browserChange
-        )
-        self.transactionCoordinator = transactionCoordinator
-        self.smartRoutingCoordinator = SmartRoutingCoordinator(
-            systemHandler: environment.systemBrowserHandler,
-            repository: environment.stateRepository,
-            transactionCoordinator: transactionCoordinator,
-            browserChange: browserChange
-        )
-        let browserLeaseCoordinator = BrowserLeaseCoordinator(
-            systemHandler: environment.systemBrowserHandler,
-            repository: environment.stateRepository,
-            browserChange: browserChange,
-            scheduler: environment.leaseScheduler,
-            now: environment.now
-        )
+    convenience init(environment: AppEnvironment) {
+        self.init(services: BrowserChangeServices(environment: environment))
+    }
+
+    init(services: BrowserChangeServices) {
+        self.environment = services.environment
+        self.browserChange = services.browserChange
+        self.transactionCoordinator = services.transactionCoordinator
+        self.smartRoutingCoordinator = services.smartRoutingCoordinator
+        let browserLeaseCoordinator = services.browserLeaseCoordinator
         self.browserLeaseCoordinator = browserLeaseCoordinator
-        self.routingCoordinator = RoutingCoordinator(
-            launcher: environment.urlLauncher,
-            browserChange: browserChange,
-            now: environment.now
-        )
-        self.configurationEditor = RoutingConfigurationEditor(
-            browserChange: browserChange,
-            now: environment.now
-        )
+        self.routingCoordinator = services.routingCoordinator
+        self.configurationEditor = services.configurationEditor
+        self.intentBridge = services.intentBridge
         self.handlerHealth = HTTPHandlerSnapshot.missing.health(
-            browserChange: browserChange
+            browserChange: services.browserChange
         )
         browserLeaseCoordinator.onAutomaticExpiry = { [weak self] in
             guard let self else { return }
@@ -454,6 +434,25 @@ final class BrowserStore {
             return true
         case .failed(let issue):
             message = browserLeaseMessage(for: issue)
+            return false
+        }
+    }
+
+    @discardableResult
+    func setAutomationLeasesAllowed(_ isAllowed: Bool) -> Bool {
+        do {
+            let result = try intentBridge
+                .setAutomationLeasesAllowed(isAllowed)
+            reload()
+            message = result
+            return true
+        } catch let error as BrowserChangeAutomationError {
+            reload()
+            message = error.errorDescription
+            return false
+        } catch {
+            reload()
+            message = "BrowserChange could not save the automation setting."
             return false
         }
     }
@@ -1045,6 +1044,8 @@ final class BrowserStore {
         activeBrowserLease = smartRoutingCoordinator
             .configuration.browserLease
         canUndoLease = browserLeaseCoordinator.canUndo
+        allowsAutomationLeases = smartRoutingCoordinator
+            .configuration.allowAutomationLeases
         publish()
 
         if leaseReconciliation.didExpire {

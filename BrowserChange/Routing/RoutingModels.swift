@@ -208,7 +208,7 @@ struct BrowserLease: Codable, Equatable, Identifiable, Sendable {
 }
 
 struct RoutingConfiguration: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 3
+    static let currentSchemaVersion = 4
 
     var schemaVersion: Int
     var mode: RoutingMode
@@ -217,6 +217,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
     var profiles: [RoutingProfile]
     var activeProfileID: UUID?
     var browserLease: BrowserLease?
+    var allowAutomationLeases: Bool
 
     init(
         schemaVersion: Int = currentSchemaVersion,
@@ -225,7 +226,8 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         domainRules: [DomainRule] = [],
         profiles: [RoutingProfile] = [],
         activeProfileID: UUID? = nil,
-        browserLease: BrowserLease? = nil
+        browserLease: BrowserLease? = nil,
+        allowAutomationLeases: Bool = false
     ) {
         self.schemaVersion = schemaVersion
         self.mode = mode
@@ -234,6 +236,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         self.profiles = profiles
         self.activeProfileID = activeProfileID
         self.browserLease = browserLease
+        self.allowAutomationLeases = allowAutomationLeases
     }
 
     static let fresh = RoutingConfiguration()
@@ -246,6 +249,7 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
         case profiles
         case activeProfileID
         case browserLease
+        case allowAutomationLeases
     }
 
     init(from decoder: Decoder) throws {
@@ -275,6 +279,10 @@ struct RoutingConfiguration: Codable, Equatable, Sendable {
             BrowserLease.self,
             forKey: .browserLease
         )
+        allowAutomationLeases = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .allowAutomationLeases
+        ) ?? false
 
         if let activeProfileID,
            !profiles.contains(where: { $0.id == activeProfileID }) {

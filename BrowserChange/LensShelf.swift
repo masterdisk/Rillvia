@@ -300,6 +300,42 @@ private struct RoutingModeCard: View {
                 .accessibilityIdentifier("routing-mode-detail")
 
             if store.isSmartRoutingConfigured {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(
+                        "Allow Shortcuts to start leases",
+                        isOn: Binding(
+                            get: {
+                                store.allowsAutomationLeases
+                            },
+                            set: {
+                                store.setAutomationLeasesAllowed($0)
+                            }
+                        )
+                    )
+                    .accessibilityIdentifier(
+                        "allow-automation-leases"
+                    )
+
+                    Text(
+                        "Off by default. This permission never turns on Smart Routing; it only lets Shortcuts start a temporary lease while Smart Routing is verified active."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Text(
+                        "For a Work Focus automation, use Set Routing Profile or Start Browser Lease when Focus turns on, then End Browser Lease or Restore Previous Browser when it turns off. BrowserChange does not read or infer Focus state."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(
+                        "focus-automation-guidance"
+                    )
+                }
+
                 if let fallback {
                     Button(
                         "Turn off Smart Routing and make \(fallback.name) the Direct default"

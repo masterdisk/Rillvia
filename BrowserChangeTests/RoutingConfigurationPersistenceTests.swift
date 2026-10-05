@@ -45,6 +45,53 @@ final class RoutingConfigurationPersistenceTests: XCTestCase {
         XCTAssertNil(migrated.activeProfileID)
     }
 
+    func testTask5SchemaMigratesWithAutomationLeasesDisabled() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let task5JSON = """
+        {
+          "schemaVersion": 3,
+          "mode": "smart",
+          "fallbackBrowser": {"bundleIdentifier": "com.apple.Safari"},
+          "domainRules": [],
+          "profiles": []
+        }
+        """
+        try Data(task5JSON.utf8).write(
+            to: directory.appendingPathComponent("configuration.json")
+        )
+
+        let migrated = try StateRepository(
+            baseDirectory: directory
+        ).loadConfiguration()
+
+        XCTAssertEqual(
+            migrated.schemaVersion,
+            RoutingConfiguration.currentSchemaVersion
+        )
+        XCTAssertFalse(migrated.allowAutomationLeases)
+    }
+
+    func testAutomationLeasePermissionSurvivesRestart() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let repository = StateRepository(baseDirectory: directory)
+        var configuration = RoutingConfiguration.fresh
+        configuration.allowAutomationLeases = true
+
+        try repository.saveConfiguration(configuration)
+
+        let restartedRepository = StateRepository(baseDirectory: directory)
+        XCTAssertTrue(
+            try restartedRepository.loadConfiguration()
+                .allowAutomationLeases
+        )
+    }
+
     func testConfigurationSnapshotsAreBoundedAndContainConfigurationOnly() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

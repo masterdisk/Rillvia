@@ -244,6 +244,39 @@ final class BrowserChangeUITests: XCTestCase {
         )
     }
 
+    func testSmartRoutingExplainsAndControlsFocusAutomationPermission() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+        ]
+        app.launch()
+
+        let enable = app.buttons[
+            "Turn on Smart Routing with Google Chrome"
+        ]
+        XCTAssertTrue(enable.waitForExistence(timeout: 4))
+        enable.click()
+
+        let permission = app.checkBoxes[
+            "allow-automation-leases"
+        ]
+        XCTAssertTrue(permission.waitForExistence(timeout: 2))
+        XCTAssertEqual(permission.value as? Int, 0)
+        XCTAssertTrue(
+            app.staticTexts["focus-automation-guidance"].exists
+        )
+
+        permission.click()
+
+        XCTAssertEqual(permission.value as? Int, 1)
+        XCTAssertTrue(
+            app.staticTexts[
+                "Shortcuts may now start browser leases."
+            ].waitForExistence(timeout: 2)
+        )
+    }
+
     func testSmartBrowserLeaseCanStartEndAndUndoFromMainWindow() {
         let app = XCUIApplication()
         app.launchArguments = [

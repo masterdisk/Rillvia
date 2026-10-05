@@ -87,10 +87,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct BrowserChangeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store: BrowserStore
+    private let runtime: BrowserChangeAppRuntime
 
     init() {
+        let runtime = BrowserChangeAppRuntime(
+            environment: .bootstrap()
+        )
+        self.runtime = runtime
+        BrowserChangeAppShortcuts.updateAppShortcutParameters()
         _store = State(
-            initialValue: BrowserStore(environment: .bootstrap())
+            initialValue: runtime.store
         )
     }
 
