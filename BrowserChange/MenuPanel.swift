@@ -19,6 +19,8 @@ struct MenuBarLabel: View {
 }
 
 struct MenuPanel: View {
+    private let panelWidth: CGFloat = 400
+    private let contentInset: CGFloat = 16
     var delegate: AppDelegate
     @Environment(BrowserStore.self) private var store
     @Environment(\.openWindow) private var openWindow
@@ -35,7 +37,7 @@ struct MenuPanel: View {
                     RoutingStatus().accessibilityIdentifier("menu-routing-mode-title")
                 }
                 Spacer()
-            }.padding(20)
+            }.frame(width: panelWidth - 40, alignment: .leading).padding(20)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -77,17 +79,20 @@ struct MenuPanel: View {
                         }
                     }.frame(height: min(CGFloat(store.externalBrowsers.count) * 38, 152))
                     HStack(spacing: 10) {
-                        Text("For").foregroundStyle(.secondary)
+                        Text("For").foregroundStyle(.secondary).frame(width: 22, alignment: .leading)
                         Picker("Temporary duration", selection: $duration) {
                             Text("15 min").tag(BrowserLeasePreset.fifteenMinutes)
                             Text("30 min").tag(BrowserLeasePreset.thirtyMinutes)
                             Text("60 min").tag(BrowserLeasePreset.sixtyMinutes)
                             Text("Until ended").tag(BrowserLeasePreset.untilEnded)
                         }.labelsHidden().pickerStyle(.segmented)
+                            .controlSize(.small)
+                            .frame(width: panelWidth - contentInset * 2 - 32)
+                            .accessibilityIdentifier("menu-duration")
                     }
                     Button {
                         if let chosen { _ = store.borrowBrowser(chosen, for: duration) }
-                    } label: { Text(duration.actionTitle(browserName: chosen?.name ?? "a browser")).frame(maxWidth: .infinity, minHeight: 24).fixedSize(horizontal: false, vertical: true) }
+                    } label: { Text(duration.actionTitle(browserName: chosen?.name ?? "a browser")).fixedSize(horizontal: false, vertical: true).frame(minWidth: 0, maxWidth: .infinity, minHeight: 24) }
                     .buttonStyle(.glassProminent).controlSize(.large)
                         .disabled(chosen == nil || !store.isSmartRoutingActive)
                         .accessibilityIdentifier("menu-start-temporary-browser")
@@ -101,7 +106,10 @@ struct MenuPanel: View {
                         }.buttonStyle(.link).accessibilityIdentifier("menu-open-clipboard-link")
                     }
                     StoreNotice()
-                }.padding(16)
+                }
+                // Scroll content must keep the panel's width when native controls update their intrinsic size.
+                .frame(width: panelWidth - contentInset * 2, alignment: .leading)
+                .padding(contentInset)
             }.frame(maxHeight: .infinity)
             Divider()
             HStack(spacing: 12) {
@@ -113,9 +121,9 @@ struct MenuPanel: View {
                     Divider()
                     Button("Quit Rillvia") { NSApp.terminate(nil) }
                 } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("More options")
-            }.padding(16)
+            }.frame(width: panelWidth - contentInset * 2, alignment: .leading).padding(contentInset)
         }.font(.system(size: 14)).buttonBorderShape(.roundedRectangle)
-            .frame(width: 400, height: 560)
+            .frame(width: panelWidth, height: 560, alignment: .topLeading)
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             .onAppear {
                 browserID = store.activeLeaseBrowser?.id ?? store.externalBrowsers.first { $0.reference != store.smartFallbackBrowser?.reference }?.id ?? store.externalBrowsers.first?.id ?? ""

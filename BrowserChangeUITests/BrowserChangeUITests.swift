@@ -302,6 +302,59 @@ final class BrowserChangeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["menu-start-temporary-browser"].isEnabled)
     }
 
+    func testMenuPaddingSurvivesBrowserDurationAndLeaseChanges() {
+        let app = designApp()
+        let status = app.statusItems["Rillvia"]
+        XCTAssertTrue(status.waitForExistence(timeout: 3))
+        status.click()
+        let panel = app.dialogs.containing(.button, identifier: "menu-open-app").firstMatch
+        let start = app.buttons["menu-start-temporary-browser"]
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        XCTAssertTrue(panel.exists)
+
+        func checkInsets(file: StaticString = #filePath, line: UInt = #line) {
+            let bounds = panel.frame
+            XCTAssertEqual(bounds.width, 400, accuracy: 4, file: file, line: line)
+            for element in [start, app.buttons["menu-choice-com.apple.Safari"], app.buttons["menu-choice-com.google.Chrome"], app.buttons["menu-open-app"]] {
+                XCTAssertGreaterThanOrEqual(element.frame.minX - bounds.minX, 14, file: file, line: line)
+                XCTAssertLessThanOrEqual(element.frame.maxX, bounds.maxX - 14, file: file, line: line)
+            }
+            let label = app.staticTexts["For"]
+            XCTAssertGreaterThanOrEqual(label.frame.minX - bounds.minX, 14, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(app.radioButtons["15 min"].frame.minX - label.frame.maxX, 6, file: file, line: line)
+            XCTAssertLessThanOrEqual(app.radioButtons["Until ended"].frame.maxX, bounds.maxX - 14, file: file, line: line)
+        }
+
+        checkInsets()
+        for browser in ["com.apple.Safari", "company.thebrowser.dia", "com.google.Chrome"] {
+            app.buttons["menu-choice-\(browser)"].click()
+            for duration in ["Until ended", "30 min", "60 min", "15 min"] {
+                app.radioButtons[duration].click()
+                checkInsets()
+            }
+        }
+        start.click()
+        let end = app.buttons["end-temporary-browser"].firstMatch
+        XCTAssertTrue(end.waitForExistence(timeout: 3))
+        checkInsets()
+        end.click()
+        let undo = app.buttons["Undo temporary browser change"].firstMatch
+        XCTAssertTrue(undo.waitForExistence(timeout: 3))
+        checkInsets()
+        undo.click()
+        XCTAssertTrue(end.waitForExistence(timeout: 3))
+        checkInsets()
+
+        app.buttons["menu-open-app"].click()
+        status.click()
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        checkInsets()
+        let attachment = XCTAttachment(screenshot: panel.screenshot())
+        attachment.name = "rillvia-menu-stable-padding"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testLivingBrowserHallIsStillAvailable() {
         let app = designApp()
         app.menuBars.menuBarItems["Tools"].click()
