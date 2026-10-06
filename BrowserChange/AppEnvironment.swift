@@ -69,6 +69,8 @@ struct AppEnvironment {
             version: "140",
             appURL: URL(fileURLWithPath: "/Applications/Google Chrome.app")
         )
+        let dia = InstalledBrowser(id: "company.thebrowser.dia", name: "Dia", version: "1.0", appURL: URL(fileURLWithPath: "/Applications/Dia.app"))
+        let isDesignFixture = arguments.contains("--ui-testing-design-fixture")
         let chromeHandler = HandlerApplication(
             browser: chrome.reference,
             applicationURL: chrome.appURL
@@ -96,7 +98,7 @@ struct AppEnvironment {
             "--ui-testing-task7-fixture"
         ) || arguments.contains(
             "--ui-testing-routing-fixture"
-        ) {
+        ) || isDesignFixture {
             handlers = .same(browserChangeHandler)
         } else {
             handlers = .same(chromeHandler)
@@ -106,6 +108,7 @@ struct AppEnvironment {
             chrome.reference: chrome.appURL,
             browserChange: browserChangeURL,
         ]
+        if isDesignFixture { applications[dia.reference] = dia.appURL }
         if arguments.contains(
             "--ui-testing-explicit-target-unavailable"
         ) {
@@ -126,7 +129,18 @@ struct AppEnvironment {
         let leaseScheduler = UITestBrowserLeaseScheduler(
             clock: testClock
         )
-        if arguments.contains("--ui-testing-task7-fixture") {
+        if isDesignFixture {
+            let work = RoutingProfile(name: "Work")
+            let personal = RoutingProfile(name: "Personal")
+            try? repository.saveConfiguration(RoutingConfiguration(
+                mode: .smart, fallbackBrowser: safari.reference,
+                domainRules: [
+                    DomainRule(domain: "github.com", browser: chrome.reference, profileID: work.id),
+                    DomainRule(domain: "meet.google.com", browser: chrome.reference, profileID: work.id),
+                    DomainRule(domain: "youtube.com", browser: safari.reference, profileID: personal.id)
+                ], profiles: [work, personal], activeProfileID: work.id
+            ))
+        } else if arguments.contains("--ui-testing-task7-fixture") {
             let work = RoutingProfile(
                 id: UUID(
                     uuidString: "00000000-0000-0000-0000-000000000071"
@@ -220,12 +234,13 @@ struct AppEnvironment {
         }
 
         return AppEnvironment(
-            browserCatalog: UITestBrowserCatalog(browsers: [safari, chrome]),
+            browserCatalog: UITestBrowserCatalog(browsers: isDesignFixture ? [safari, chrome, dia] : [safari, chrome]),
             systemBrowserHandler: handler,
             stateRepository: repository,
             urlLauncher: handler,
             now: { testClock.now },
-            leaseScheduler: leaseScheduler
+            leaseScheduler: leaseScheduler,
+            browserProfiles: isDesignFixture ? UITestDesignProfileReader() : EmptyBrowserProfileReader()
         )
     }
     #endif
@@ -316,5 +331,15 @@ private final class UITestSystemBrowserHandler: SystemBrowserHandling {
             throw SystemBrowserHandlerError.applicationNotFound(browser)
         }
     }
+}
+#endif
+
+#if DEBUG
+struct UITestDesignProfileReader: BrowserProfileReading {
+    func profiles(for bundleIdentifier: String) -> [BrowserProfileChoice] {
+        guard bundleIdentifier == "com.google.Chrome" else { return [] }
+        return [BrowserProfileChoice(key: "Default", name: "Personal", family: .chromium), BrowserProfileChoice(key: "Profile 1", name: "Work", family: .chromium)]
+    }
+    func supportsPrivateWindow(_ bundleIdentifier: String) -> Bool { BrowserProfileCatalog.supportsPrivateWindow(bundleIdentifier) }
 }
 #endif

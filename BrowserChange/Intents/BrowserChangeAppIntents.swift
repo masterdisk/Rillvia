@@ -19,7 +19,7 @@ extension BrowserLeasePreset: AppEnum {
 struct OpenLinkIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Link"
     static let description = IntentDescription(
-        "Opens an HTTP or HTTPS link in a chosen browser, or through Linkpick when no browser is chosen."
+        "Opens an HTTP or HTTPS link in a chosen browser, or through Rillvia when no browser is chosen."
     )
     static var supportedModes: IntentModes {
         [.background, .foreground]
@@ -30,7 +30,7 @@ struct OpenLinkIntent: AppIntent {
 
     @Parameter(
         title: "Browser",
-        description: "Leave empty to use Linkpick."
+        description: "Leave empty to use Rillvia."
     )
     var browser: InstalledBrowserEntity?
 
@@ -49,7 +49,7 @@ struct OpenLinkIntent: AppIntent {
 struct SetRoutingProfileIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Rule Set"
     static let description = IntentDescription(
-        "Selects an existing enabled Linkpick rule set."
+        "Selects an existing enabled Rillvia rule set."
     )
     static var supportedModes: IntentModes {
         [.background, .foreground]
@@ -70,7 +70,7 @@ struct SetRoutingProfileIntent: AppIntent {
 struct StartBrowserLeaseIntent: AppIntent {
     static let title: LocalizedStringResource = "Use Another Browser"
     static let description = IntentDescription(
-        "Sends links to one browser for a while. Linkpick must be sending links, and Shortcuts must be allowed to switch browsers."
+        "Sends links to one browser for a while. Rillvia must be sending links, and Shortcuts must be allowed to switch browsers."
     )
     static var supportedModes: IntentModes {
         [.background, .foreground]

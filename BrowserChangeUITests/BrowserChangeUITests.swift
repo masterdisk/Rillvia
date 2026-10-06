@@ -2,823 +2,316 @@ import AppKit
 import XCTest
 
 final class BrowserChangeUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
+    override func setUpWithError() throws { continueAfterFailure = false }
 
-    func testMainWindowPrioritizesChoosingTheDefaultBrowser() {
+    private func launch(_ arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        XCTAssertTrue(
-            app.staticTexts["workspace-title"].waitForExistence(timeout: 4),
-            "The primary heading should state the job of the window."
-        )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["browser-sidebar"].exists,
-            "Installed browsers should be presented in a native sidebar."
-        )
-        XCTAssertTrue(
-            app.staticTexts["routing-mode-title"].exists,
-            "The browser page should show where links open."
-        )
-        XCTAssertTrue(app.buttons["nav-airlock"].exists)
-        XCTAssertTrue(app.buttons["nav-rules"].exists)
-        XCTAssertTrue(app.buttons["nav-profiles"].exists)
-        XCTAssertFalse(
-            app.staticTexts["Where links could go"].exists,
-            "The old dashboard-style preview heading should be removed."
-        )
-
-        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        screenshot.name = "browserchange-redesign"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
-
-        let safari = app.buttons["browser-row-Safari"]
-        XCTAssertTrue(safari.exists)
-        safari.click()
-        XCTAssertTrue(
-            app.buttons["Make Safari the usual browser"].waitForExistence(timeout: 2),
-            "Selecting another browser should reveal one clear primary action."
-        )
-
-        let selectionScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        selectionScreenshot.name = "browserchange-selection"
-        selectionScreenshot.lifetime = .keepAlways
-        add(selectionScreenshot)
-    }
-
-    func testMainWindowInDarkAppearance() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--force-dark-appearance",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        XCTAssertTrue(app.staticTexts["workspace-title"].waitForExistence(timeout: 4))
-
-        let windowScreenshot = app.windows.firstMatch.screenshot()
-        XCTAssertLessThan(
-            sampledLuminance(of: windowScreenshot.image),
-            0.5,
-            "The window should render with a genuinely dark semantic background."
-        )
-
-        let screenshot = XCTAttachment(screenshot: windowScreenshot)
-        screenshot.name = "browserchange-dark"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
-    }
-
-    func testSplitHandlersCanBeRepairedWithTheSelectedBrowser() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-            "--ui-testing-split-handlers",
-        ]
-        app.launch()
-
-        let warning = app.staticTexts["split-handler-warning"]
-        XCTAssertTrue(
-            warning.waitForExistence(timeout: 4),
-            "A split HTTP/HTTPS state should be explained in the main workspace."
-        )
-
-        app.buttons["browser-row-Safari"].click()
-        let repair = app.buttons["Use Safari for both HTTP and HTTPS"]
-        XCTAssertTrue(repair.waitForExistence(timeout: 2))
-        repair.click()
-
-        XCTAssertTrue(
-            warning.waitForNonExistence(timeout: 2),
-            "Repair should leave both fake handlers on the selected browser."
-        )
-        XCTAssertTrue(
-            app.buttons["Undo last browser change"].waitForExistence(timeout: 2)
-        )
-    }
-
-    func testAirlockPreviewsAndTeachesRuleOnlyAfterExplicitOpen() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        let enable = app.buttons[
-            "Send links through Linkpick. Otherwise use Google Chrome."
-        ]
-        XCTAssertTrue(enable.waitForExistence(timeout: 4))
-        enable.click()
-
-        let airlock = app.buttons["nav-airlock"]
-        XCTAssertTrue(airlock.waitForExistence(timeout: 2))
-        airlock.click()
-
-        let input = app.textViews["airlock-input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 2))
-        input.click()
-        input.typeText(
-            "https://Docs.Example.com/private?utm_source=mail"
-        )
-        app.buttons["airlock-preview"].click()
-
-        XCTAssertTrue(
-            app.staticTexts["docs.example.com"].waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(app.staticTexts["Google Chrome"].exists)
-
-        app.buttons["airlock-open-in"].click()
-        let always = app.checkBoxes["chooser-always"]
-        XCTAssertTrue(always.waitForExistence(timeout: 2))
-        always.click()
-        app.radioButtons["This site and subdomains"].click()
-        app.buttons["chooser-open-Safari"].click()
-
-        app.buttons["nav-rules"].click()
-        XCTAssertTrue(
-            app.staticTexts["rules-title"].waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(app.staticTexts["docs.example.com"].exists)
-        XCTAssertTrue(app.staticTexts["This site and subdomains"].exists)
-    }
-
-    func testSuccessfulDirectSwitchCanBeUndoneFromTheMainWorkspace() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        app.buttons["browser-row-Safari"].click()
-        let makeDefault = app.buttons["Make Safari the usual browser"]
-        XCTAssertTrue(makeDefault.waitForExistence(timeout: 2))
-        makeDefault.click()
-
-        let undo = app.buttons["Undo last browser change"]
-        XCTAssertTrue(undo.waitForExistence(timeout: 2))
-        undo.click()
-
-        XCTAssertTrue(
-            app.buttons["Make Safari the usual browser"].waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(
-            app.staticTexts["Restored the previous web-link handlers."]
-                .waitForExistence(timeout: 2)
-        )
-    }
-
-    func testSmartRoutingModeAndFallbackTransitionsAreExplicit() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        XCTAssertTrue(
-            app.staticTexts["routing-mode-title"].waitForExistence(timeout: 4)
-        )
-        XCTAssertTrue(app.staticTexts["Usual browser"].exists)
-
-        let enable = app.buttons[
-            "Send links through Linkpick. Otherwise use Google Chrome."
-        ]
-        XCTAssertTrue(enable.waitForExistence(timeout: 2))
-        enable.click()
-
-        XCTAssertTrue(
-            app.staticTexts["Sending links"].waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(
-            app.buttons[
-                "Stop. Make Google Chrome the usual browser."
-            ].exists
-        )
-
-        app.buttons["browser-row-Safari"].click()
-        let useSafari = app.buttons[
-            "Use Safari when no rule matches"
-        ]
-        XCTAssertTrue(useSafari.waitForExistence(timeout: 2))
-        useSafari.click()
-
-        let disable = app.buttons[
-            "Stop. Make Safari the usual browser."
-        ]
-        XCTAssertTrue(disable.waitForExistence(timeout: 2))
-        disable.click()
-
-        XCTAssertTrue(
-            app.staticTexts["Usual browser"].waitForExistence(timeout: 2)
-        )
-    }
-
-    func testConfiguredSmartWithExternalHandlersDisplaysSuspendedState() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-            "--ui-testing-smart-suspended",
-        ]
-        app.launch()
-
-        let modeTitle = app.staticTexts["routing-mode-title"]
-        XCTAssertTrue(modeTitle.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["Link sending paused"].exists)
-        XCTAssertTrue(app.staticTexts["routing-mode-detail"].exists)
-        XCTAssertTrue(
-            app.buttons[
-                "Stop. Make Google Chrome the usual browser."
-            ].exists
-        )
-    }
-
-    func testSmartRoutingExplainsAndControlsFocusAutomationPermission() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        let enable = app.buttons[
-            "Send links through Linkpick. Otherwise use Google Chrome."
-        ]
-        XCTAssertTrue(enable.waitForExistence(timeout: 4))
-        enable.click()
-
-        let permission = app.checkBoxes[
-            "allow-automation-leases"
-        ]
-        XCTAssertTrue(permission.waitForExistence(timeout: 2))
-        XCTAssertEqual(permission.value as? Int, 0)
-
-        permission.click()
-
-        XCTAssertEqual(permission.value as? Int, 1)
-        XCTAssertTrue(
-            app.staticTexts[
-                "Shortcuts can now switch browsers."
-            ].waitForExistence(timeout: 2)
-        )
-    }
-
-    func testSmartBrowserLeaseCanStartEndAndUndoFromMainWindow() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        let enable = app.buttons[
-            "Send links through Linkpick. Otherwise use Google Chrome."
-        ]
-        XCTAssertTrue(enable.waitForExistence(timeout: 4))
-        enable.click()
-
-        app.buttons["browser-row-Safari"].click()
-        let borrow = app.descendants(matching: .any)[
-            "borrow-browser-Safari"
-        ]
-        XCTAssertTrue(
-            borrow.waitForExistence(timeout: 2),
-            "Sending links should offer a temporary browser for the selected one."
-        )
-        borrow.click()
-        let fifteenMinutes = app.menuItems["15 minutes"]
-        XCTAssertTrue(fifteenMinutes.waitForExistence(timeout: 2))
-        fifteenMinutes.click()
-
-        let activeTitle = app.descendants(matching: .any)[
-            "active-lease-title"
-        ]
-        XCTAssertTrue(
-            activeTitle.waitForExistence(timeout: 2)
-        )
-        let remaining = app.descendants(matching: .any)[
-            "active-lease-remaining"
-        ]
-        XCTAssertTrue(remaining.exists)
-        XCTAssertEqual(remaining.value as? String, "15:00 remaining")
-        let end = app.buttons["end-browser-lease"]
-        XCTAssertTrue(end.exists)
-        XCTAssertTrue(app.buttons["undo-browser-lease"].exists)
-
-        end.click()
-
-        XCTAssertTrue(
-            activeTitle.waitForNonExistence(timeout: 2)
-        )
-        let undo = app.buttons["undo-browser-lease"]
-        XCTAssertTrue(undo.waitForExistence(timeout: 2))
-        undo.click()
-        XCTAssertTrue(
-            activeTitle.waitForExistence(timeout: 2)
-        )
-    }
-
-    func testConfigurationMutationWithdrawsStaleLeaseUndo() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        let enable = app.buttons[
-            "Send links through Linkpick. Otherwise use Google Chrome."
-        ]
-        XCTAssertTrue(enable.waitForExistence(timeout: 4))
-        enable.click()
-
-        app.buttons["browser-row-Safari"].click()
-        let borrow = app.descendants(matching: .any)[
-            "borrow-browser-Safari"
-        ]
-        XCTAssertTrue(borrow.waitForExistence(timeout: 2))
-        borrow.click()
-        app.menuItems["15 minutes"].click()
-
-        let undo = app.buttons["undo-browser-lease"]
-        XCTAssertTrue(undo.waitForExistence(timeout: 2))
-        let permission = app.checkBoxes[
-            "allow-automation-leases"
-        ]
-        XCTAssertTrue(permission.exists)
-        permission.click()
-
-        XCTAssertTrue(
-            undo.waitForNonExistence(timeout: 2),
-            "A later configuration mutation must withdraw stale lease Undo."
-        )
-    }
-
-    func testFakeTimedLeaseExpiryUpdatesUIAndRoutingWithoutWaiting() {
-        let app = launchTask7App(
-            extraArguments: [
-                "--ui-testing-lease-expiry-control",
-            ]
-        )
-        let activeTitle = app.descendants(matching: .any)[
-            "active-lease-title"
-        ]
-        XCTAssertTrue(activeTitle.waitForExistence(timeout: 4))
-
-        let expire = app.buttons["ui-test-expire-lease"]
-        XCTAssertTrue(expire.exists)
-        expire.click()
-
-        XCTAssertTrue(activeTitle.waitForNonExistence(timeout: 2))
-        XCTAssertFalse(app.buttons["undo-browser-lease"].exists)
-        XCTAssertTrue(
-            app.staticTexts[
-                "The temporary browser ended. Rules and Google Chrome are in use again."
-            ].waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(
-            app.buttons[
-                "Stop. Make Google Chrome the usual browser."
-            ].exists
-        )
-
-        app.buttons["nav-airlock"].click()
-        let input = app.textViews["airlock-input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 2))
-        input.click()
-        input.typeText("https://unmatched.invalid/after-expiry")
-        app.buttons["airlock-preview"].click()
-        let prediction = app.staticTexts[
-            "airlock-predicted-browser"
-        ]
-        XCTAssertTrue(prediction.waitForExistence(timeout: 2))
-        XCTAssertEqual(accessibleText(of: prediction), "Google Chrome")
-        app.buttons["Open now"].click()
-        app.buttons["nav-direct"].click()
-        XCTAssertTrue(
-            app.staticTexts[
-                "Opened the link in Google Chrome."
-            ].waitForExistence(timeout: 2)
-        )
-    }
-
-    func testMenuPanelExposesBorrowCountdownEndAndUndo() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-        ]
-        app.launch()
-
-        let enable = app.buttons[
-            "Send links through Linkpick. Otherwise use Google Chrome."
-        ]
-        XCTAssertTrue(enable.waitForExistence(timeout: 4))
-        enable.click()
-
-        let statusItem = app.statusItems[
-            "Linkpick, Google Chrome"
-        ]
-        XCTAssertTrue(statusItem.waitForExistence(timeout: 2))
-        statusItem.click()
-
-        let borrow = app.buttons["menu-borrow-browser"]
-        XCTAssertTrue(
-            borrow.waitForExistence(timeout: 2),
-            "The menu panel should offer a temporary browser only while Linkpick is sending links."
-        )
-        borrow.click()
-        let safari = app.buttons["menu-borrow-choice-Safari"]
-        XCTAssertTrue(safari.waitForExistence(timeout: 2))
-        safari.click()
-        let confirm = app.buttons["menu-borrow-confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 2))
-        XCTAssertEqual(confirm.label, "Use Safari for 15 minutes")
-        confirm.click()
-        XCTAssertTrue(app.buttons["menu-quit"].exists)
-
-        XCTAssertTrue(
-            app.descendants(matching: .any)[
-                "menu-active-lease-title"
-            ].waitForExistence(timeout: 2)
-        )
-        let remaining = app.descendants(matching: .any)[
-            "menu-active-lease-remaining"
-        ]
-        XCTAssertTrue(remaining.exists)
-        XCTAssertEqual(remaining.value as? String, "15:00 remaining")
-        let end = app.buttons["menu-end-browser-lease"]
-        XCTAssertTrue(end.exists)
-        XCTAssertTrue(app.buttons["menu-undo-browser-lease"].exists)
-
-        end.click()
-
-        let undo = app.buttons["menu-undo-browser-lease"]
-        XCTAssertTrue(undo.waitForExistence(timeout: 2))
-        undo.click()
-        XCTAssertTrue(
-            app.descendants(matching: .any)[
-                "menu-active-lease-title"
-            ].waitForExistence(timeout: 2)
-        )
-    }
-
-    func testViewSourceShortcutOpensRedactedDiagnostics() {
-        let app = launchTask7App()
-
-        app.typeKey(
-            "u",
-            modifierFlags: [.command, .option]
-        )
-
-        XCTAssertTrue(
-            app.staticTexts["diagnostics-title"]
-                .waitForExistence(timeout: 2)
-        )
-        let snapshot = app.staticTexts["diagnostics-snapshot"]
-        XCTAssertTrue(snapshot.exists)
-        XCTAssertTrue(
-            accessibleText(of: snapshot).contains(
-                "Configuration schema"
-            )
-        )
-        XCTAssertFalse(
-            accessibleText(of: snapshot).contains("/private")
-        )
-        XCTAssertTrue(app.buttons["copy-diagnostics"].isHittable)
-        attachScreenshot(
-            named: "task7-diagnostics",
-            app: app
-        )
-    }
-
-    func testPreviewTimeMachineEvaluatesAndReturnsToNow() {
-        let app = launchTask7App()
-
-        app.typeKey(
-            "t",
-            modifierFlags: [.command, .option]
-        )
-
-        XCTAssertTrue(
-            app.staticTexts["time-machine-title"]
-                .waitForExistence(timeout: 2)
-        )
-        let input = app.textFields["time-machine-url"]
-        XCTAssertTrue(input.isHittable)
-        input.click()
-        input.typeText(
-            "https://example.com/private?secret=value"
-        )
-        app.buttons["time-machine-evaluate"].click()
-
-        XCTAssertTrue(
-            app.staticTexts["historical-result-target"]
-                .waitForExistence(timeout: 2)
-        )
-        XCTAssertEqual(
-            accessibleText(
-                of: app.staticTexts[
-                    "historical-result-target"
-                ]
-            ),
-            "Safari"
-        )
-        attachScreenshot(
-            named: "task7-time-machine",
-            app: app
-        )
-
-        app.buttons["return-to-now"].click()
-        XCTAssertTrue(
-            app.staticTexts["time-machine-title"]
-                .waitForNonExistence(timeout: 2)
-        )
-    }
-
-    func testFiveTapLivingHallShowsLiveFactsAndNetscapeFootnote() {
-        let app = launchTask7App()
-        let header = app.buttons["browsers-header"]
-        XCTAssertTrue(header.waitForExistence(timeout: 2))
-
-        for _ in 0..<5 {
-            header.click()
-        }
-
-        XCTAssertTrue(
-            app.staticTexts["living-hall-title"]
-                .waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(
-            app.staticTexts["hall-browser-com.apple.Safari"].exists
-        )
-        XCTAssertTrue(
-            app.staticTexts["hall-browser-com.google.Chrome"].exists
-        )
-        XCTAssertTrue(
-            app.staticTexts["Browser for sites with no rule"].exists
-        )
-        app.buttons["hall-era-netscape"].click()
-        XCTAssertTrue(
-            app.staticTexts["netscape-footnote"]
-                .waitForExistence(timeout: 1)
-        )
-        attachScreenshot(
-            named: "task7-living-hall",
-            app: app
-        )
-    }
-
-    func testTask7LightAirlockRulesAndLeaseVisuals() {
-        let app = launchTask7App()
-
-        XCTAssertTrue(
-            app.staticTexts["workspace-title"]
-                .waitForExistence(timeout: 4)
-        )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["active-lease-title"]
-                .exists
-        )
-        XCTAssertTrue(app.buttons["end-browser-lease"].isHittable)
-        XCTAssertTrue(
-            app.checkBoxes["allow-automation-leases"].isHittable
-        )
-        XCTAssertTrue(
-            app.buttons["browser-row-Safari"].isHittable
-        )
-        XCTAssertGreaterThan(
-            sampledLuminance(
-                of: app.windows.firstMatch.screenshot().image
-            ),
-            0.5
-        )
-        attachScreenshot(named: "task7-light", app: app)
-        attachScreenshot(named: "task7-lease", app: app)
-
-        app.buttons["nav-airlock"].click()
-        let input = app.textViews["airlock-input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 2))
-        input.click()
-        input.typeText("https://example.com/review")
-        app.buttons["airlock-preview"].click()
-        XCTAssertTrue(app.buttons["airlock-open-in"].isHittable)
-        attachScreenshot(named: "task7-airlock", app: app)
-
-        app.buttons["nav-rules"].click()
-        XCTAssertTrue(
-            app.staticTexts["rules-title"]
-                .waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(app.buttons["Create rule"].isHittable)
-        attachScreenshot(named: "task7-rules", app: app)
-
-        app.buttons["nav-profiles"].click()
-        XCTAssertTrue(
-            app.staticTexts["profiles-title"]
-                .waitForExistence(timeout: 2)
-        )
-        XCTAssertTrue(app.buttons["Create rule set"].isHittable)
-    }
-
-    func testTask7DarkLargeTextReducedMotionSmoke() {
-        let app = launchTask7App(
-            extraArguments: [
-                "--force-dark-appearance",
-                "--ui-testing-large-text",
-                "--ui-testing-reduce-motion",
-            ]
-        )
-
-        XCTAssertTrue(
-            app.staticTexts["workspace-title"]
-                .waitForExistence(timeout: 4)
-        )
-        XCTAssertTrue(app.buttons["nav-airlock"].isHittable)
-        XCTAssertTrue(app.buttons["nav-rules"].isHittable)
-        XCTAssertTrue(app.buttons["nav-profiles"].isHittable)
-        let screenshot = app.windows.firstMatch.screenshot()
-        XCTAssertLessThan(
-            sampledLuminance(of: screenshot.image),
-            0.5
-        )
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "task7-dark-large-text-reduced-motion"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-    }
-
-    func testFailedAlwaysOpenTeachingKeepsChooserVisible() {
-        let app = launchTask7App(
-            extraArguments: [
-                "--ui-testing-history-failure",
-            ]
-        )
-
-        app.buttons["nav-airlock"].click()
-        let input = app.textViews["airlock-input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 2))
-        input.click()
-        input.typeText("https://example.com/private")
-        app.buttons["airlock-preview"].click()
-        app.buttons["airlock-open-in"].click()
-        app.checkBoxes["chooser-always"].click()
-        app.buttons["chooser-open-Safari"].click()
-
-        XCTAssertTrue(
-            app.staticTexts["browser-chooser-title"]
-                .waitForExistence(timeout: 2)
-        )
-        let error = app.staticTexts["chooser-error"]
-        XCTAssertTrue(error.waitForExistence(timeout: 2))
-        XCTAssertTrue(
-            accessibleText(of: error).contains(
-                "the “Always open” rule was not saved"
-            )
-        )
-    }
-
-    func testDisappearedExplicitTargetKeepsChooserVisible() {
-        let app = launchTask7App(
-            extraArguments: [
-                "--ui-testing-explicit-target-unavailable",
-            ]
-        )
-
-        app.buttons["nav-airlock"].click()
-        let input = app.textViews["airlock-input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 2))
-        input.click()
-        input.typeText("https://example.com/target-gone")
-        app.buttons["airlock-preview"].click()
-        app.buttons["airlock-open-in"].click()
-        app.buttons["chooser-open-Safari"].click()
-
-        XCTAssertTrue(
-            app.staticTexts["browser-chooser-title"]
-                .waitForExistence(timeout: 2)
-        )
-        let error = app.staticTexts["chooser-error"]
-        XCTAssertTrue(error.waitForExistence(timeout: 2))
-        XCTAssertTrue(
-            accessibleText(of: error).contains(
-                "no longer available"
-            )
-        )
-        XCTAssertTrue(
-            accessibleText(of: error).contains(
-                "choose another browser"
-            )
-        )
-    }
-
-    func testIncomingURLLaunchStaysWindowlessWhileRoutingToFallback() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-            "--ui-testing-routing-fixture",
-            "--ui-testing-incoming-fallback",
-            "--force-light-appearance",
-        ]
-        app.launch()
-
-        XCTAssertFalse(
-            app.windows.firstMatch.waitForExistence(timeout: 3),
-            "A URL-handler launch must route in the background without presenting BrowserChange."
-        )
-    }
-
-    func testRulesWorkspaceCreatesARuleFromATypedDomain() {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-            "--force-light-appearance",
-        ]
-        app.launch()
-
-        XCTAssertTrue(
-            app.staticTexts["workspace-title"].waitForExistence(timeout: 4)
-        )
-        app.buttons["nav-rules"].click()
-        XCTAssertTrue(
-            app.staticTexts["rules-title"].waitForExistence(timeout: 2)
-        )
-
-        let domainField = app.textFields["rule-domain-field"]
-        XCTAssertTrue(domainField.waitForExistence(timeout: 2))
-        domainField.click()
-        domainField.typeText("news.example.com")
-
-        let createRule = app.buttons["Create rule"]
-        XCTAssertTrue(createRule.isEnabled)
-        createRule.click()
-
-        XCTAssertTrue(
-            app.staticTexts["news.example.com"].waitForExistence(timeout: 2),
-            "Creating a rule must persist the typed domain in the list."
-        )
-    }
-
-    private func launchTask7App(
-        extraArguments: [String] = []
-    ) -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-ApplePersistenceIgnoreState", "YES",
-            "--ui-testing",
-            "--ui-testing-task7-fixture",
-            "--force-light-appearance",
-        ] + extraArguments
+        app.launchArguments = ["-ApplePersistenceIgnoreState", "YES", "--ui-testing"] + arguments
         app.launch()
         return app
     }
-
-    private func attachScreenshot(
-        named name: String,
-        app: XCUIApplication
-    ) {
-        let attachment = XCTAttachment(
-            screenshot: app.windows.firstMatch.screenshot()
-        )
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    private func designApp(_ arguments: [String] = []) -> XCUIApplication { launch(["--ui-testing-design-fixture", "--force-light-appearance"] + arguments) }
+    private func preview(_ url: String, in app: XCUIApplication) {
+        app.buttons["nav-airlock"].click()
+        let input = app.textFields["airlock-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 4))
+        input.click(); input.typeKey("a", modifierFlags: .command); input.typeText(url)
+        app.buttons["airlock-preview"].click()
+    }
+    private func screenshot(_ app: XCUIApplication, _ name: String) {
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 
-    private func accessibleText(
-        of element: XCUIElement
-    ) -> String {
-        if !element.label.isEmpty {
-            return element.label
-        }
-        return element.value as? String ?? ""
+    func testOverviewAndKeyboardNavigation() {
+        let app = designApp()
+        XCTAssertTrue(app.staticTexts["workspace-title"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["fallback-picker"].exists)
+        XCTAssertTrue(app.buttons["active-rule-set-picker"].exists)
+        XCTAssertTrue(app.staticTexts["Rules are on"].exists)
+        screenshot(app, "rillvia-overview-light")
+        app.typeKey("2", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["airlock-title"].waitForExistence(timeout: 3))
+        app.typeKey("3", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["rules-title"].waitForExistence(timeout: 3))
+        app.typeKey("4", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["browsers-title"].waitForExistence(timeout: 3))
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["settings-title"].waitForExistence(timeout: 3))
+        app.typeKey("/", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["keyboard-shortcuts-title"].waitForExistence(timeout: 3))
     }
 
-    private func sampledLuminance(of image: NSImage) -> CGFloat {
-        guard let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let color = bitmap.colorAt(
-                x: Int(Double(bitmap.pixelsWide) * 0.9),
-                y: Int(Double(bitmap.pixelsHigh) * 0.5)
-              )?.usingColorSpace(.deviceRGB) else {
-            XCTFail("Could not sample the dark appearance screenshot.")
-            return 1
+    func testBrowserSelectionDoesNotChangeFallback() {
+        let app = designApp()
+        app.buttons["nav-direct"].click()
+        app.buttons["browser-row-Google Chrome"].click()
+        XCTAssertTrue(app.buttons["use-selected-browser"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-browsers-light")
+        app.buttons["nav-overview"].click()
+        XCTAssertTrue(app.staticTexts["Safari opens links unless a rule says otherwise."].exists)
+        app.buttons["nav-direct"].click()
+        app.buttons["use-selected-browser"].click()
+        app.buttons["nav-overview"].click()
+        XCTAssertTrue(app.staticTexts["Google Chrome opens links unless a rule says otherwise."].waitForExistence(timeout: 3))
+    }
+
+    func testBrowsingAnInactiveSetRequiresExplicitActivation() {
+        let app = designApp()
+        app.buttons["nav-rules"].click()
+        app.buttons["Personal"].click()
+        let activate = app.buttons["activate-browsed-rule-set"]
+        XCTAssertTrue(activate.waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-personal-inactive")
+        activate.click()
+        XCTAssertTrue(activate.waitForNonExistence(timeout: 3))
+        app.buttons["nav-overview"].click()
+        XCTAssertTrue((app.buttons["active-rule-set-picker"].value as? String) == "Personal")
+    }
+
+    func testRuleDraftNeedsSaveAndGuardsNavigation() {
+        let app = designApp()
+        app.buttons["nav-rules"].click()
+        app.buttons["rule-row-github.com"].click()
+        screenshot(app, "rillvia-rules-github")
+        let domain = app.textFields["rule-domain"]
+        domain.click(); domain.typeKey("a", modifierFlags: .command); domain.typeText("https://docs.example.com/path")
+        app.buttons["nav-overview"].click()
+        XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 3))
+        app.sheets.firstMatch.buttons["Keep editing"].click()
+        XCTAssertEqual(domain.value as? String, "https://docs.example.com/path")
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(app.buttons["rule-row-docs.example.com"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-rule-editor")
+        app.buttons["nav-overview"].click()
+        XCTAssertTrue(app.staticTexts["workspace-title"].waitForExistence(timeout: 3))
+    }
+
+    func testNewRuleValidatesAndUsesTypedDomain() {
+        let app = designApp()
+        app.buttons["nav-rules"].click()
+        app.typeKey("n", modifierFlags: .command)
+        let domain = app.textFields["rule-domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.click(); domain.typeText("bad host")
+        XCTAssertFalse(app.buttons["save-rule"].isEnabled)
+        domain.typeKey("a", modifierFlags: .command); domain.typeText("news.example.com")
+        app.buttons["rule-browser"].click()
+        app.buttons["selector-choice-com.apple.Safari"].click()
+        app.buttons["rule-scope"].click()
+        app.buttons["selector-choice-includeSubdomains"].click()
+        XCTAssertTrue(app.buttons["save-rule"].isEnabled)
+        app.buttons["save-rule"].click()
+        XCTAssertTrue(app.buttons["rule-row-news.example.com"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["rule-row-news.example.com"].label.contains("Safari"))
+    }
+
+    func testDeletingRuleOffersVisibleUndo() {
+        let app = designApp()
+        app.buttons["nav-rules"].click()
+        let rule = app.buttons["rule-row-github.com"]
+        rule.click()
+        rule.rightClick()
+        app.menuItems["Delete rule"].click()
+        XCTAssertTrue(rule.waitForNonExistence(timeout: 3))
+        let undo = app.buttons["undo-configuration"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 3))
+        undo.click()
+        XCTAssertTrue(rule.waitForExistence(timeout: 3))
+    }
+
+    func testPreviewStaysCurrentOnlyUntilInputChanges() {
+        let app = designApp()
+        preview("https://github.com/openai?utm_source=newsletter", in: app)
+        XCTAssertTrue(app.buttons["airlock-open-now"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Matches github.com in Work"].exists)
+        screenshot(app, "rillvia-preview")
+        let input = app.textFields["airlock-input"]
+        input.click(); input.typeText("/changed")
+        XCTAssertFalse(app.buttons["airlock-open-now"].exists)
+        app.buttons["airlock-preview"].click()
+        XCTAssertTrue(app.buttons["airlock-open-now"].waitForExistence(timeout: 3))
+    }
+
+    func testAlwaysOpenTeachingNeedsExplicitOpen() {
+        let app = designApp()
+        preview("https://docs.example.com/path?utm_source=mail", in: app)
+        app.buttons["airlock-open-in"].click()
+        let chooser = app.staticTexts["airlock-chooser-title"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 3))
+        app.buttons["chooser-browser-Google Chrome"].click()
+        app.checkBoxes["airlock-always-open"].click()
+        XCTAssertTrue(chooser.exists)
+        app.buttons["chooser-open"].click()
+        XCTAssertTrue(chooser.waitForNonExistence(timeout: 3))
+        app.buttons["nav-rules"].click()
+        XCTAssertTrue(app.buttons["rule-row-docs.example.com"].waitForExistence(timeout: 3))
+    }
+
+    func testFailedTeachingAndDisappearedBrowserKeepChooserOpen() {
+        for extra in [["--ui-testing-history-failure"], ["--ui-testing-explicit-target-unavailable"]] {
+            let app = launch(["--ui-testing-task7-fixture"] + extra)
+            preview("https://example.com/path", in: app)
+            app.buttons["airlock-open-in"].click()
+            app.buttons["chooser-browser-Safari"].click()
+            app.checkBoxes["airlock-always-open"].click()
+            app.buttons["chooser-open"].click()
+            XCTAssertTrue(app.staticTexts["airlock-chooser-error"].waitForExistence(timeout: 3))
+            XCTAssertTrue(app.staticTexts["airlock-chooser-title"].exists)
+            app.terminate()
         }
-        return (0.2126 * color.redComponent)
-            + (0.7152 * color.greenComponent)
-            + (0.0722 * color.blueComponent)
+    }
+
+    func testTemporaryBrowserStartsExplicitlyAndCanEndAndUndo() {
+        let app = designApp()
+        app.typeKey("t", modifierFlags: .command)
+        let start = app.buttons["start-temporary-browser"]
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["end-temporary-browser"].exists)
+        start.click()
+        let end = app.buttons["end-temporary-browser"]
+        XCTAssertTrue(end.waitForExistence(timeout: 3))
+        end.click()
+        app.buttons["Undo temporary browser change"].click()
+        XCTAssertTrue(end.waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-temporary-browser")
+    }
+
+    func testTimedExpiryResumesRules() {
+        let app = launch(["--ui-testing-task7-fixture", "--ui-testing-lease-expiry-control"])
+        XCTAssertTrue(app.buttons["end-temporary-browser"].waitForExistence(timeout: 5))
+        app.buttons["ui-test-expire-lease"].click()
+        XCTAssertTrue(app.buttons["end-temporary-browser"].waitForNonExistence(timeout: 3))
+        preview("https://example.com", in: app)
+        XCTAssertTrue(app.staticTexts["Matches example.com in Work"].waitForExistence(timeout: 3))
+    }
+
+    func testDirectSwitchAndSplitHandlerRepairCanBeUndone() {
+        let app = launch(["--ui-testing-split-handlers"])
+        app.buttons["nav-direct"].click()
+        app.buttons["browser-row-Safari"].click()
+        let warning = app.staticTexts["split-handler-warning"]
+        XCTAssertTrue(warning.waitForExistence(timeout: 3))
+        app.buttons["Use Safari for both HTTP and HTTPS"].click()
+        XCTAssertTrue(warning.waitForNonExistence(timeout: 3))
+        app.buttons["Undo last browser change"].click()
+        XCTAssertTrue(warning.waitForExistence(timeout: 3))
+    }
+
+    func testRulesCanTurnOnAndOffWithAnExplicitAction() {
+        let app = launch()
+        app.buttons["enable-rules"].click()
+        XCTAssertTrue(app.staticTexts["Rules are on"].waitForExistence(timeout: 3))
+        app.buttons["nav-settings"].click()
+        app.buttons["settings-routing-toggle"].click()
+        XCTAssertTrue(app.staticTexts["Rules are off"].waitForExistence(timeout: 3))
+        app.buttons["settings-routing-toggle"].click()
+        XCTAssertTrue(app.staticTexts["Rules are on"].waitForExistence(timeout: 3))
+    }
+
+    func testSuspendedRoutingShowsCurrentMacOSBrowser() {
+        let app = launch(["--ui-testing-smart-suspended"])
+        XCTAssertTrue(app.staticTexts["Rules are paused"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["enable-rules"].exists)
+        preview("https://example.com", in: app)
+        XCTAssertTrue(app.staticTexts["Rules are paused. Uses the current macOS default."].waitForExistence(timeout: 3))
+    }
+
+    func testSettingsTutorialReplayAndKeyboardHelp() {
+        let app = designApp()
+        app.buttons["nav-settings"].click()
+        XCTAssertTrue(app.descendants(matching: .any)["open-at-login"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-settings")
+        app.buttons["replay-tutorial"].click()
+        XCTAssertTrue(app.staticTexts["intro-title"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-tutorial")
+        for _ in 0..<5 { app.buttons["intro-done"].click() }
+        XCTAssertTrue(app.staticTexts["intro-title"].waitForNonExistence(timeout: 3))
+        app.typeKey("/", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["keyboard-shortcuts-title"].waitForExistence(timeout: 3))
+    }
+
+    func testDiagnosticsShortcutRedactsURLAndHistoryCanReturnToNow() {
+        let app = launch(["--ui-testing-task7-fixture"])
+        app.typeKey("u", modifierFlags: [.command, .option])
+        XCTAssertTrue(app.staticTexts["diagnostics-title"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-diagnostics")
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey("t", modifierFlags: [.command, .option])
+        XCTAssertTrue(app.staticTexts["time-machine-title"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-history")
+    }
+
+    func testDarkAppearanceLargeTextAndReducedMotion() {
+        let app = designApp(["--force-dark-appearance", "--ui-testing-large-text", "--ui-testing-reduce-motion"])
+        XCTAssertTrue(app.staticTexts["workspace-title"].waitForExistence(timeout: 5))
+        screenshot(app, "rillvia-overview-dark")
+        app.buttons["nav-direct"].click()
+        app.buttons["browser-row-Google Chrome"].click()
+        XCTAssertTrue(app.staticTexts["browser-detail-title"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-browsers-dark")
+    }
+
+
+    func testWidePickerKeyboardShortcutsAndCancel() {
+        let app = designApp()
+        app.typeKey("b", modifierFlags: .command)
+        let chrome = app.buttons["selector-choice-com.google.Chrome"]
+        XCTAssertTrue(chrome.waitForExistence(timeout: 3))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(chrome.waitForNonExistence(timeout: 3))
+        XCTAssertEqual(app.buttons["fallback-picker"].value as? String, "Safari")
+        app.typeKey("r", modifierFlags: [.command, .shift])
+        let personal = app.buttons.matching(NSPredicate(format: "label == %@", "Personal")).firstMatch
+        XCTAssertTrue(personal.waitForExistence(timeout: 3))
+        personal.click()
+        XCTAssertEqual(app.buttons["active-rule-set-picker"].value as? String, "Personal")
+    }
+
+    func testMenuPanelShowsFullActionAndExplicitTemporarySwitch() {
+        let app = designApp()
+        let status = app.statusItems["Rillvia"]
+        XCTAssertTrue(status.waitForExistence(timeout: 3))
+        status.click()
+        let start = app.buttons["menu-start-temporary-browser"]
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        XCTAssertEqual(start.label, "Use Google Chrome for 15 minutes")
+        XCTAssertFalse(app.buttons["end-temporary-browser"].exists)
+        let panel = app.dialogs.containing(.button, identifier: "menu-open-app").firstMatch
+        if panel.exists {
+            let attachment = XCTAttachment(screenshot: panel.screenshot()); attachment.name = "rillvia-menu-panel"; attachment.lifetime = .keepAlways; add(attachment)
+        }
+        start.click()
+        XCTAssertTrue(app.buttons["end-temporary-browser"].firstMatch.waitForExistence(timeout: 3))
+        app.buttons["end-temporary-browser"].firstMatch.click()
+        XCTAssertTrue(app.buttons["Undo temporary browser change"].firstMatch.waitForExistence(timeout: 3))
+    }
+
+    func testMenuPanelUsesTheCurrentMacOSBrowserWhenRulesAreOff() {
+        let app = designApp()
+        app.buttons["nav-settings"].click()
+        app.buttons["settings-routing-toggle"].click()
+        XCTAssertTrue(app.staticTexts["Rules are off"].waitForExistence(timeout: 3))
+        app.buttons["nav-direct"].click()
+        app.buttons["browser-row-Google Chrome"].click()
+        app.buttons["use-selected-browser"].click()
+        app.statusItems["Rillvia"].click()
+        let browser = app.staticTexts["menu-other-links-browser"]
+        XCTAssertTrue(browser.waitForExistence(timeout: 3))
+        XCTAssertEqual(browser.value as? String, "Google Chrome")
+        XCTAssertFalse(app.buttons["menu-start-temporary-browser"].isEnabled)
+    }
+
+    func testLivingBrowserHallIsStillAvailable() {
+        let app = designApp()
+        app.menuBars.menuBarItems["Tools"].click()
+        app.menuItems["Living Browser Hall"].click()
+        XCTAssertTrue(app.staticTexts["living-hall-title"].waitForExistence(timeout: 3))
+        screenshot(app, "rillvia-browser-hall")
+    }
+
+    func testIncomingURLLaunchRemainsWindowless() {
+        let app = launch(["--ui-testing-routing-fixture", "--ui-testing-incoming-fallback"])
+        XCTAssertFalse(app.windows.firstMatch.waitForExistence(timeout: 3))
     }
 }

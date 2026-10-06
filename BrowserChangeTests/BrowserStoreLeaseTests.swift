@@ -286,7 +286,7 @@ final class BrowserStoreLeaseTests: XCTestCase {
         XCTAssertNil(direct.activeBrowserLease)
         XCTAssertEqual(
             direct.message,
-            "You can use another browser for a while only while Linkpick is sending links."
+            "You can use another browser for a while only while Rillvia is sending links."
         )
         XCTAssertTrue(directHandler.setCalls.isEmpty)
     }

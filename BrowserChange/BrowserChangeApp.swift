@@ -161,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func suppressAccidentalMainWindow() {
         guard launchWindowPolicy.shouldSuppressMainWindow else { return }
-        for window in NSApp.windows where window.canBecomeMain || window.title == "Linkpick" {
+        for window in NSApp.windows where window.canBecomeMain || window.title == "Rillvia" {
             window.orderOut(nil)
         }
         NSApp.setActivationPolicy(.accessory)
@@ -246,11 +246,11 @@ struct BrowserChangeApp: App {
     }
 
     var body: some Scene {
-        Window("Linkpick", id: "main") {
+        Window("Rillvia", id: "main") {
             RootView(delegate: appDelegate)
                 .environment(store)
         }
-        .defaultSize(width: 880, height: 620)
+        .defaultSize(width: UITestingMenuPreview.enabled ? 600 : 940, height: UITestingMenuPreview.enabled ? 640 : 680)
         .defaultPosition(.center)
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
@@ -258,7 +258,7 @@ struct BrowserChangeApp: App {
         .restorationBehavior(.disabled)
         .handlesExternalEvents(matching: [])
         .commands {
-            BrowserChangeCommands(store: store)
+            BrowserChangeCommands(store: store, delegate: appDelegate)
         }
 
         MenuBarExtra {
@@ -281,8 +281,8 @@ private struct ConnectedMenuBarLabel: View {
 
     var body: some View {
         MenuBarLabel(
-            image: store.menuBarSource,
-            name: store.defaultBrowserName
+            image: AppBrand.menuImage,
+            name: AppBrand.name
         )
         .onAppear {
             delegate.connect(store: store) {
@@ -297,19 +297,39 @@ private struct ConnectedMenuBarLabel: View {
     }
 }
 
+private enum UITestingMenuPreview {
+    static var enabled: Bool {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("--ui-testing") && arguments.contains("--ui-testing-menu-preview")
+        #else
+        return false
+        #endif
+    }
+}
+
 private struct RootView: View {
     var delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
     @Environment(BrowserStore.self) private var store
     @State private var showIntro = false
+    @AppStorage("appearance", store: AppPreferences.defaults) private var appearance = "system"
 
     var body: some View {
-        ContentView()
+        Group {
+            // Capture the real menu component with isolated handlers when status-bar automation is unavailable.
+            if UITestingMenuPreview.enabled {
+                MenuPanel(delegate: delegate)
+            } else {
+                ContentView()
+            }
+        }
+            .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             .modifier(UITestingAccessibilityEnvironment())
             .sheet(isPresented: $showIntro) {
                 IntroView {
                     showIntro = false
-                }
+                }.environment(store)
             }
             .onAppear {
                 delegate.connect(store: store) {
@@ -323,6 +343,13 @@ private struct RootView: View {
             }
             .task {
                 await delegate.prepareForIncomingURLs()
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing-design-fixture") {
+                    store.workspace.previewInput = "https://github.com/openai"
+                    store.stageAirlock(text: store.workspace.previewInput)
+                    store.workspace.markPreview(input: store.workspace.previewInput, revision: store.revision)
+                }
+                #endif
             }
     }
 }

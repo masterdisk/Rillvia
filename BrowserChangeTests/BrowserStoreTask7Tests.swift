@@ -74,7 +74,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
         XCTAssertFalse(result.shouldDismiss)
         XCTAssertEqual(
             result.errorMessage,
-            "The link opened in Safari, but the “Always open” rule was not saved. Reopen Linkpick, then try again."
+            "The link opened in Safari, but the “Always open” rule was not saved. Reopen Rillvia, then try again."
         )
         XCTAssertEqual(store.message, result.errorMessage)
         XCTAssertTrue(
@@ -408,7 +408,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
         XCTAssertEqual(launcher.calls.count, 1)
         XCTAssertEqual(
             store.message,
-            "Linkpick stopped a repeated link."
+            "Rillvia stopped a repeated link."
         )
     }
 
@@ -445,7 +445,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
         )
         XCTAssertEqual(
             store.message,
-            "Linkpick could not check the temporary browser. Expired ones will not be used."
+            "Rillvia could not check the temporary browser. Expired ones will not be used."
         )
     }
 

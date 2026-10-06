@@ -29,11 +29,11 @@ extension BrowserChangeAutomationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedURL:
-            "Linkpick can open only HTTP and HTTPS links."
+            "Rillvia can open only HTTP and HTTPS links."
         case .smartRoutingUnavailable:
-            "Linkpick is not sending links."
+            "Rillvia is not sending links."
         case .selfTarget:
-            "Linkpick cannot open a link in itself."
+            "Rillvia cannot open a link in itself."
         case .browserUnavailable:
             "The selected browser is not installed."
         case .profileUnavailable:
@@ -41,17 +41,17 @@ extension BrowserChangeAutomationError: LocalizedError {
         case .automationLeasePermissionDisabled:
             "Shortcuts are not allowed to switch browsers."
         case .handlerTransitionInProgress:
-            "Linkpick is still changing how links open."
+            "Rillvia is still changing how links open."
         case .noUndoAvailable:
             "There is no previous browser change to restore."
         case .duplicateDispatch:
-            "Linkpick stopped a repeated link."
+            "Rillvia stopped a repeated link."
         case .launchFailed:
             "The selected browser could not open the link."
         case .restoreFailed:
-            "Linkpick could not restore the previous browser."
+            "Rillvia could not restore the previous browser."
         case .persistenceFailed:
-            "Linkpick could not save this."
+            "Rillvia could not save this."
         }
     }
 
@@ -60,7 +60,7 @@ extension BrowserChangeAutomationError: LocalizedError {
         case .unsupportedURL:
             "Choose a link that starts with http:// or https://."
         case .smartRoutingUnavailable:
-            "Open Linkpick and turn on link sending."
+            "Open Rillvia and turn on link sending."
         case .selfTarget:
             "Choose an installed browser."
         case .browserUnavailable:
@@ -68,7 +68,7 @@ extension BrowserChangeAutomationError: LocalizedError {
         case .profileUnavailable:
             "Choose an enabled rule set that still exists."
         case .automationLeasePermissionDisabled:
-            "Turn on “Let Shortcuts switch browsers” in Linkpick first."
+            "Turn on “Let Shortcuts switch browsers” in Rillvia first."
         case .handlerTransitionInProgress:
             "Wait for the current change to finish, then try again."
         case .noUndoAvailable:
@@ -78,9 +78,9 @@ extension BrowserChangeAutomationError: LocalizedError {
         case .launchFailed:
             "Reinstall the browser or choose another browser."
         case .restoreFailed:
-            "Open Linkpick and check which browser opens links."
+            "Open Rillvia and check which browser opens links."
         case .persistenceFailed:
-            "Reopen Linkpick and try again."
+            "Reopen Rillvia and try again."
         }
     }
 }

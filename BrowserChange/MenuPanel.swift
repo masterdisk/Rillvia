@@ -2,18 +2,18 @@ import AppKit
 import SwiftUI
 
 struct MenuBarLabel: View {
-    var image: NSImage
+    var image: NSImage?
     var name: String
-
     var body: some View {
-        Image(nsImage: menuImage(image))
-            .accessibilityLabel("Linkpick, \(name)")
+        Group {
+            if let image { Image(nsImage: menuImage(image)) }
+            else { Image(systemName: "arrow.triangle.branch") }
+        }.accessibilityLabel(name)
     }
-
     private func menuImage(_ source: NSImage) -> NSImage {
         let copy = (source.copy() as? NSImage) ?? source
         copy.size = NSSize(width: 18, height: 18)
-        copy.isTemplate = false
+        copy.isTemplate = true
         return copy
     }
 }
@@ -23,293 +23,112 @@ struct MenuPanel: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
-
+    @AppStorage("appearance", store: AppPreferences.defaults) private var appearance = "system"
+    @State private var browserID = ""
+    @State private var duration: BrowserLeasePreset = .fifteenMinutes
     var body: some View {
-        let fallback = store.smartFallbackBrowser
-            ?? store.switchable.first {
-                $0.id == store.defaultBundleID
-            }
-
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(store.routingModeTitle)
-                    .font(.headline)
-                    .accessibilityIdentifier("menu-routing-mode-title")
-                Text(store.routingModeDetail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-
-            if store.hasSplitHandlers {
-                Text("HTTP and HTTPS open in different browsers")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 4)
-                if let message = store.splitHandlerMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 4)
+            HStack(spacing: 11) {
+                Image("AppLogo").resizable().frame(width: 35, height: 35).clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(AppBrand.name).font(.system(size: 20, weight: .semibold))
+                    RoutingStatus().accessibilityIdentifier("menu-routing-mode-title")
                 }
-                if !store.isSmartRoutingConfigured,
-                   let browser = store.selectedBrowserForRepair {
-                    MenuRow(title: "Use \(browser.name) for both") {
-                        Task { await store.repairSelectedHandlers() }
+                Spacer()
+            }.padding(20)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
+                            Text(store.isSmartRoutingActive ? "Other links" : "Default browser").foregroundStyle(.secondary).frame(width: 118, alignment: .leading)
+                            BrowserIcon(browser: store.isSmartRoutingActive ? store.smartFallbackBrowser : store.currentMacOSBrowser, size: 22)
+                            Text(store.isSmartRoutingActive ? store.smartFallbackBrowser?.name ?? "Choose a browser" : store.currentMacOSBrowserName)
+                                .fontWeight(.medium).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("menu-other-links-browser")
+                            Spacer(minLength: 0)
+                        }
+                        HStack(spacing: 12) {
+                            Text("Active rule set").foregroundStyle(.secondary).frame(width: 118, alignment: .leading)
+                            Image(systemName: "square.3.layers.3d").foregroundStyle(.secondary).frame(width: 22)
+                            Text(store.routingConfiguration.profiles.first { $0.id == store.routingConfiguration.activeProfileID }?.name ?? "Shared rules only").fontWeight(.medium).fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }.font(.callout)
+
+                    Divider()
+                    ActiveBrowserNotice()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Use temporarily").font(.system(size: 20, weight: .semibold))
+                        Text("Send links to one browser for a while.").font(.callout).foregroundStyle(.secondary)
                     }
-                    .disabled(store.isSwitching)
-                }
+                    ScrollView {
+                        VStack(spacing: 2) {
+                            ForEach(store.externalBrowsers) { browser in
+                                Button { browserID = browser.id } label: {
+                                    HStack(spacing: 10) {
+                                        BrowserIcon(browser: browser, size: 24)
+                                        Text(browser.name).fixedSize(horizontal: false, vertical: true)
+                                        Spacer(minLength: 8)
+                                        Image(systemName: browserID == browser.id ? "checkmark.circle.fill" : "circle").foregroundStyle(browserID == browser.id ? Color.accentColor : Color.secondary)
+                                    }.padding(.horizontal, 10).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                                        .background(browserID == browser.id ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                                }.buttonStyle(.plain).accessibilityIdentifier("menu-choice-\(browser.id)")
+                            }
+                        }
+                    }.frame(height: min(CGFloat(store.externalBrowsers.count) * 38, 152))
+                    HStack(spacing: 10) {
+                        Text("For").foregroundStyle(.secondary)
+                        Picker("Temporary duration", selection: $duration) {
+                            Text("15 min").tag(BrowserLeasePreset.fifteenMinutes)
+                            Text("30 min").tag(BrowserLeasePreset.thirtyMinutes)
+                            Text("60 min").tag(BrowserLeasePreset.sixtyMinutes)
+                            Text("Until ended").tag(BrowserLeasePreset.untilEnded)
+                        }.labelsHidden().pickerStyle(.segmented)
+                    }
+                    Button {
+                        if let chosen { _ = store.borrowBrowser(chosen, for: duration) }
+                    } label: { Text(duration.actionTitle(browserName: chosen?.name ?? "a browser")).frame(maxWidth: .infinity, minHeight: 24).fixedSize(horizontal: false, vertical: true) }
+                    .buttonStyle(.glassProminent).controlSize(.large)
+                        .disabled(chosen == nil || !store.isSmartRoutingActive)
+                        .accessibilityIdentifier("menu-start-temporary-browser")
+                    Text(store.isSmartRoutingActive ? "Your rules resume when it ends." : "Turn on rules in Overview first.").font(.callout).foregroundStyle(.secondary)
+                    if store.hasClipboardWebURL {
+                        Button("Preview clipboard link", systemImage: "doc.on.clipboard") {
+                            guard store.stageClipboardURL() else { return }
+                            store.workspace.previewInput = store.airlockResult.items.map(\.originalText).joined(separator: "\n")
+                            store.workspace.markPreview(input: store.workspace.previewInput, revision: store.revision)
+                            presentMainWindow()
+                        }.buttonStyle(.link).accessibilityIdentifier("menu-open-clipboard-link")
+                    }
+                    StoreNotice()
+                }.padding(16)
+            }.frame(maxHeight: .infinity)
+            Divider()
+            HStack(spacing: 12) {
+                Button("Open Rillvia", systemImage: "macwindow") { presentMainWindow() }.buttonStyle(.glass).controlSize(.large).accessibilityIdentifier("menu-open-app")
+                Spacer(minLength: 0)
+                Menu {
+                    Button("Keyboard shortcuts") { presentMainWindow(); store.workspace.showKeyboardShortcuts = true }
+                    Button("Diagnostics") { presentMainWindow(); store.openDiagnostics() }
+                    Divider()
+                    Button("Quit Rillvia") { NSApp.terminate(nil) }
+                } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("More options")
+            }.padding(16)
+        }.font(.system(size: 14)).buttonBorderShape(.roundedRectangle)
+            .frame(width: 400, height: 560)
+            .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+            .onAppear {
+                browserID = store.activeLeaseBrowser?.id ?? store.externalBrowsers.first { $0.reference != store.smartFallbackBrowser?.reference }?.id ?? store.externalBrowsers.first?.id ?? ""
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing-design-fixture") { browserID = "com.google.Chrome" }
+                #endif
             }
-
-            if store.switchable.count > 7 {
-                ScrollView { rows }
-                    .frame(height: 320)
-            } else {
-                rows
-            }
-
-            if store.activeBrowserLease != nil || store.canUndoLease {
-                sectionRule
-                MenuLeaseControls()
-            }
-
-            if store.isSmartRoutingActive {
-                sectionRule
-                MenuBorrowControls()
-            }
-
-            if store.hasClipboardWebURL {
-                MenuRow(
-                    title: "Open clipboard link",
-                    identifier: "menu-open-clipboard-link"
-                ) {
-                    guard store.stageClipboardURL() else { return }
-                    presentMainWindow()
-                }
-            }
-
-            if store.canUndo {
-                MenuRow(
-                    title: "Undo last change",
-                    identifier: "menu-undo-browser-change"
-                ) {
-                    Task { await store.undoLastBrowserChange() }
-                }
-                .disabled(store.isSwitching)
-            }
-
-            if let message = store.message {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-            }
-
-            sectionRule
-
-            if store.isSmartRoutingConfigured, let fallback {
-                MenuRow(title: "Use \(fallback.name) for every link") {
-                    Task { await store.disableSmartRouting() }
-                }
-                .disabled(store.isSwitching)
-            } else if let fallback {
-                MenuRow(title: "Send links through Linkpick") {
-                    Task { await store.enableSmartRouting() }
-                }
-                .disabled(store.isSwitching)
-            }
-
-            MenuRow(title: "Open Linkpick", identifier: "menu-open-app") {
-                presentMainWindow()
-            }
-            MenuRow(title: "Quit Linkpick", identifier: "menu-quit") {
-                NSApp.terminate(nil)
-            }
-        }
-        .padding(.bottom, 6)
-        .frame(width: 248)
     }
-
-    private var sectionRule: some View {
-        Divider()
-            .padding(.vertical, 4)
-    }
-
+    private var chosen: InstalledBrowser? { store.externalBrowsers.first { $0.id == browserID } }
     private func presentMainWindow() {
         delegate.userWantsMainWindow()
         openWindow(id: "main")
         NSApp.activate(ignoringOtherApps: true)
         dismiss()
-    }
-
-    private var rows: some View {
-        VStack(spacing: 2) {
-            ForEach(store.switchable) { browser in
-                BrowserMenuRow(browser: browser)
-            }
-        }
-    }
-}
-
-private struct MenuBorrowControls: View {
-    @Environment(BrowserStore.self) private var store
-    @State private var pickingBrowser = false
-    @State private var chosen: InstalledBrowser?
-
-    var body: some View {
-        if let chosen {
-            ForEach(BrowserLeasePreset.allCases) { preset in
-                MenuRow(
-                    title: preset.actionTitle(browserName: chosen.name),
-                    identifier: preset == .fifteenMinutes
-                        ? "menu-borrow-confirm"
-                        : nil
-                ) {
-                    store.borrowBrowser(chosen, for: preset)
-                    self.chosen = nil
-                    pickingBrowser = false
-                }
-            }
-        } else if pickingBrowser {
-            ForEach(store.borrowableBrowsers) { browser in
-                MenuRow(
-                    title: browser.name,
-                    identifier: "menu-borrow-choice-\(browser.name)"
-                ) {
-                    chosen = browser
-                }
-            }
-        } else {
-            MenuRow(title: "For a while", identifier: "menu-borrow-browser") {
-                pickingBrowser = true
-            }
-        }
-    }
-}
-
-private struct MenuLeaseControls: View {
-    @Environment(BrowserStore.self) private var store
-
-    var body: some View {
-        if let lease = store.activeBrowserLease {
-            HStack {
-                Text("Using \(store.displayName(for: lease.browser))")
-                    .font(.caption.weight(.semibold))
-                    .accessibilityIdentifier("menu-active-lease-title")
-                Spacer()
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    Text(store.activeLeaseRemainingText ?? "")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("menu-active-lease-remaining")
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-
-            MenuRow(title: "Stop", identifier: "menu-end-browser-lease") {
-                store.endBrowserLease()
-            }
-            .accessibilityLabel("Stop")
-        }
-
-        if store.canUndoLease {
-            MenuRow(title: "Undo", identifier: "menu-undo-browser-lease") {
-                store.undoBrowserLeaseChange()
-            }
-            .accessibilityLabel("Undo")
-        }
-    }
-}
-
-private struct MenuRow: View {
-    var title: String
-    var identifier: String?
-    var action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .contentShape(Rectangle())
-                .background(hovering ? Color.primary.opacity(0.08) : Color.clear)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .modifier(MenuRowIdentifier(identifier: identifier))
-    }
-}
-
-private struct MenuRowIdentifier: ViewModifier {
-    var identifier: String?
-
-    func body(content: Content) -> some View {
-        if let identifier {
-            content.accessibilityIdentifier(identifier)
-        } else {
-            content
-        }
-    }
-}
-
-private struct BrowserMenuRow: View {
-    @Environment(BrowserStore.self) private var store
-    var browser: InstalledBrowser
-    @State private var hovering = false
-
-    var body: some View {
-        let isDefault = browser.id == store.defaultBundleID
-        Button {
-            if NSEvent.modifierFlags.contains(.option) {
-                store.copyIdentity(of: browser)
-            } else {
-                Task { await store.makeDefault(browser) }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(nsImage: store.icon(for: browser))
-                    .resizable()
-                    .interpolation(.medium)
-                    .frame(width: 22, height: 22)
-                Text(browser.name)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                if isDefault {
-                    Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
-                        .accessibilityLabel(
-                            store.isSmartRoutingConfigured
-                                ? "Browser for sites with no rule"
-                                : "Usual browser"
-                        )
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(hovering ? Color.primary.opacity(0.08) : Color.clear)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(store.isSwitching)
-        .onHover { hovering = $0 }
-        .accessibilityLabel(browser.name)
-        .accessibilityValue(
-            isDefault && store.isSmartRoutingConfigured
-                ? "Browser for sites with no rule"
-                : ""
-        )
-        .accessibilityAddTraits(isDefault ? .isSelected : [])
     }
 }

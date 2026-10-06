@@ -125,7 +125,7 @@ final class BrowserStoreTransactionTests: XCTestCase {
         XCTAssertEqual(store.transactionStatus, .idle)
         XCTAssertEqual(
             store.message,
-            "Linkpick cannot safely change the HTTP handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
+            "Rillvia cannot safely change the HTTP handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
         )
     }
 
@@ -141,7 +141,7 @@ final class BrowserStoreTransactionTests: XCTestCase {
         XCTAssertTrue(store.hasSplitHandlers)
         XCTAssertEqual(
             store.message,
-            "Linkpick could not restore both web-link handlers. Make HTTP and HTTPS match before trying again."
+            "Rillvia could not restore both web-link handlers. Make HTTP and HTTPS match before trying again."
         )
     }
 

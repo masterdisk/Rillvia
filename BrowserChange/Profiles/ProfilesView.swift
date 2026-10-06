@@ -5,7 +5,7 @@ struct ProfilesView: View {
     @State private var newName = ""
 
     var body: some View {
-        LinkpickPage(title: "Rule sets", identifier: "profiles-title") {
+        RillviaPage(title: "Rule sets", identifier: "profiles-title") {
             Section {
                 HStack {
                     TextField("Rule set name", text: $newName)

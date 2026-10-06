@@ -119,6 +119,8 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         )
         XCTAssertEqual(store.defaultBrowserName, "Google Chrome")
         XCTAssertEqual(store.defaultBundleID, chrome.id)
+        XCTAssertNil(store.currentMacOSBrowser)
+        XCTAssertEqual(store.currentMacOSBrowserName, "HTTP and HTTPS differ")
     }
 
     func testChoosingBrowserInSmartModeOnlyChangesFallback() async {
@@ -205,7 +207,7 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         XCTAssertTrue(launcher.calls.isEmpty)
         XCTAssertEqual(
             store.message,
-            "Linkpick only opens HTTP and HTTPS links."
+            "Rillvia only opens HTTP and HTTPS links."
         )
     }
 

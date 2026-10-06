@@ -12,17 +12,20 @@ enum BrowserRoutingState: Equatable, Sendable {
 }
 
 enum WorkspaceDestination: String, CaseIterable, Sendable {
+    case overview
     case direct
     case airlock
     case rules
     case profiles
+    case settings
 }
 
 @MainActor
 @Observable
 final class BrowserStore {
     var selectedID: String?
-    var workspaceDestination: WorkspaceDestination = .direct
+    var workspaceDestination: WorkspaceDestination = .overview
+    let workspace = WorkspaceModel()
     var showHall = false
     var showDiagnostics = false
     var showTimeMachine = false
@@ -67,6 +70,41 @@ final class BrowserStore {
     private let routingCoordinator: RoutingCoordinator
     private let configurationEditor: RoutingConfigurationEditor
     private let intentBridge: BrowserChangeIntentBridge
+    private var configurationUndo: (before: RoutingConfiguration, after: RoutingConfiguration)?
+
+    var canUndoConfiguration: Bool {
+        configurationUndo?.after == routingConfiguration
+    }
+
+    @discardableResult
+    func undoConfigurationChange() -> Bool {
+        guard let receipt = configurationUndo,
+              receipt.after == routingConfiguration else { return false }
+        configurationUndo = nil
+        guard persist(receipt.before, recordingUndo: false) else { configurationUndo = receipt; return false }
+        if let id = workspace.draft?.id {
+            if let rule = routingConfiguration.domainRules.first(where: { $0.id == id }) { workspace.load(rule) }
+            else { workspace.draft = nil; workspace.savedDraft = nil }
+        }
+        message = "Restored the previous rules and rule sets."
+        return true
+    }
+
+    func navigate(to destination: WorkspaceDestination) {
+        workspace.request {
+            self.workspaceDestination = destination
+        }
+    }
+
+    func editRule(_ id: UUID) {
+        guard let rule = routingConfiguration.domainRules.first(where: { $0.id == id }) else { return }
+        workspace.request {
+            self.workspace.browsedProfileID = rule.profileID
+            self.workspace.didChooseRuleSet = true
+            self.workspace.load(rule)
+            self.workspaceDestination = .rules
+        }
+    }
 
     private let quips: [(String) -> String] = [
         { "\($0) is already the default. The others can wait." },
@@ -112,11 +150,12 @@ final class BrowserStore {
     }
 
     var isSmartRoutingConfigured: Bool {
-        smartRoutingCoordinator.configuration.mode == .smart
+        routingConfiguration.mode == .smart
     }
 
     var routingConfiguration: RoutingConfiguration {
-        smartRoutingCoordinator.configuration
+        _ = revision
+        return smartRoutingCoordinator.configuration
     }
 
     var externalBrowsers: [InstalledBrowser] {
@@ -155,7 +194,7 @@ final class BrowserStore {
         let info = Bundle.main.infoDictionary
         let appName = info?["CFBundleDisplayName"] as? String
             ?? info?["CFBundleName"] as? String
-            ?? "Linkpick"
+            ?? "Rillvia"
         let appVersion = info?["CFBundleShortVersionString"] as? String
             ?? "Unknown"
         let buildVersion = info?["CFBundleVersion"] as? String
@@ -218,11 +257,11 @@ final class BrowserStore {
         case .direct:
             "Links open in the usual browser."
         case .enabling(let fallback):
-            "Waiting for macOS to let Linkpick open web links. \(name(for: fallback)) stays the browser used when no rule matches."
+            "Waiting for macOS to let Rillvia open web links. \(name(for: fallback)) stays the browser used when no rule matches."
         case .smartActive(let fallback):
             "Links open in \(name(for: fallback)), unless a rule says otherwise."
         case .smartSuspended(let fallback):
-            "macOS changed the web-link handler. Linkpick will not take it back. \(name(for: fallback)) is still the browser used when no rule matches."
+            "macOS changed the default browser. Rillvia will not take it back. Your rules and the \(name(for: fallback)) choice are saved."
         case .disabling(let fallback):
             "Waiting for macOS to make \(name(for: fallback)) the usual browser."
         case .degraded(let issue):
@@ -231,8 +270,7 @@ final class BrowserStore {
     }
 
     var smartFallbackBrowser: InstalledBrowser? {
-        guard let fallback = smartRoutingCoordinator
-            .configuration.fallbackBrowser else {
+        guard let fallback = routingConfiguration.fallbackBrowser else {
             return nil
         }
         return installed.first { $0.reference == fallback }
@@ -247,7 +285,16 @@ final class BrowserStore {
             return "HTTP and HTTPS differ"
         }
         return switchable.first { $0.id == defaultBundleID }?.name
-            ?? "Linkpick"
+            ?? "Rillvia"
+    }
+
+    var currentMacOSBrowser: InstalledBrowser? {
+        guard let browser = handlerHealth.agreedExternalBrowser else { return nil }
+        return externalBrowsers.first { $0.reference == browser }
+    }
+
+    var currentMacOSBrowserName: String {
+        hasSplitHandlers ? "HTTP and HTTPS differ" : currentMacOSBrowser?.name ?? "Unknown browser"
     }
 
     var selectedBrowserForRepair: InstalledBrowser? {
@@ -266,7 +313,7 @@ final class BrowserStore {
         if let id = defaultBundleID, let icon = icons[id] {
             return icon
         }
-        return NSImage(systemSymbolName: "globe", accessibilityDescription: "Linkpick")
+        return NSImage(systemSymbolName: "globe", accessibilityDescription: "Rillvia")
             ?? NSImage(size: NSSize(width: 18, height: 18))
     }
 
@@ -292,7 +339,7 @@ final class BrowserStore {
             return NSImage(systemSymbolName: "terminal.fill", accessibilityDescription: browser.name)
                 ?? NSImage()
         }
-        return icons[browser.id] ?? NSWorkspace.shared.icon(forFile: browser.iconURL.path)
+        return icons[browser.id] ?? NSWorkspace.shared.icon(forFile: browser.iconURL.path == "/" ? browser.appURL.path : browser.iconURL.path)
     }
 
     func refresh() {
@@ -323,7 +370,7 @@ final class BrowserStore {
             )
         } catch {
             timeMachineModel = PreviewTimeMachineModel(snapshots: [])
-            message = "Linkpick could not read its history. Reopen the app and try again."
+            message = "Rillvia could not read its history. Reopen the app and try again."
         }
         showTimeMachine = true
     }
@@ -360,7 +407,7 @@ final class BrowserStore {
             return false
         }
         stageAirlock(urls: [item.normalized.originalURL])
-        workspaceDestination = .airlock
+        navigate(to: .airlock)
         return true
     }
 
@@ -419,7 +466,7 @@ final class BrowserStore {
     func enableSmartRouting() async {
         guard !isSwitching else { return }
         guard !isSmartRoutingConfigured else {
-            message = "Linkpick is already sending links."
+            message = "Rillvia is already sending links."
             return
         }
 
@@ -433,7 +480,7 @@ final class BrowserStore {
 
         routingState = .enabling(fallback)
         transactionStatus = .switching
-        message = "Waiting for macOS to let Linkpick open web links."
+        message = "Waiting for macOS to let Rillvia open web links."
         let outcome = await smartRoutingCoordinator.enable(
             fallback: fallback
         )
@@ -456,8 +503,7 @@ final class BrowserStore {
 
     func disableSmartRouting() async {
         guard !isSwitching else { return }
-        guard let fallback = smartRoutingCoordinator
-            .configuration.fallbackBrowser else {
+        guard let fallback = routingConfiguration.fallbackBrowser else {
             message = smartRoutingMessage(for: .missingFallback)
             return
         }
@@ -488,7 +534,7 @@ final class BrowserStore {
         for preset: BrowserLeasePreset
     ) -> Bool {
         guard isSmartRoutingActive else {
-            message = "You can use another browser for a while only while Linkpick is sending links."
+            message = "You can use another browser for a while only while Rillvia is sending links."
             return false
         }
         guard externalBrowsers.contains(where: { $0.id == browser.id }) else {
@@ -565,7 +611,7 @@ final class BrowserStore {
             return false
         } catch {
             reload()
-            message = "Linkpick could not save the Shortcuts setting."
+            message = "Rillvia could not save the Shortcuts setting."
             return false
         }
     }
@@ -589,10 +635,10 @@ final class BrowserStore {
             }
             return .consumed
         case .rejected(.unsupportedURL):
-            message = "Linkpick only opens HTTP and HTTPS links."
+            message = "Rillvia only opens HTTP and HTTPS links."
             return .consumed
         case .rejected(.duplicateDispatch):
-            message = "Linkpick stopped a repeated link."
+            message = "Rillvia stopped a repeated link."
             return .consumed
         case .rejected(.selfTarget):
             message = smartRoutingMessage(for: .selfFallback)
@@ -618,14 +664,14 @@ final class BrowserStore {
         airlockResult = AirlockParser().parse(text: text)
         message = airlockResult.items.isEmpty
             ? "No valid HTTP or HTTPS links were found."
-            : "\(airlockResult.items.count) link\(airlockResult.items.count == 1 ? "" : "s") ready to review."
+            : nil
     }
 
     func stageAirlock(urls: [URL]) {
         airlockResult = AirlockParser().parse(urls: urls)
         message = airlockResult.items.isEmpty
             ? "No valid HTTP or HTTPS links were found."
-            : "\(airlockResult.items.count) link\(airlockResult.items.count == 1 ? "" : "s") ready to review."
+            : nil
     }
 
     func clearAirlock() {
@@ -638,11 +684,33 @@ final class BrowserStore {
     }
 
     func prediction(for item: AirlockItem) -> RoutingDecision? {
-        try? routingCoordinator.decision(
+        if !isSmartRoutingActive {
+            guard let scheme = WebScheme(rawValue: item.normalized.originalURL.scheme?.lowercased() ?? "") else { return nil }
+            let health = scheme == .http ? handlerHealth.http : handlerHealth.https
+            guard case .external(let application) = health,
+                  availableBrowserReferences.contains(application.browser) else { return nil }
+            return RoutingDecision(target: application.browser)
+        }
+        return try? routingCoordinator.decision(
             for: item.normalized.originalURL,
             configuration: smartRoutingCoordinator.configuration,
             availableTargets: availableBrowserReferences
         )
+    }
+
+    func openPreview(_ item: AirlockItem, expected: RoutingDecision, revision expectedRevision: Int) async -> RoutingOutcome {
+        guard workspace.previewIsCurrent(revision: revision), expectedRevision == revision else {
+            message = "The link or routing changed. Preview it again before opening."
+            return .blocked(.smartRoutingUnavailable)
+        }
+        reload(reconcilingLease: true)
+        guard prediction(for: item) == expected else {
+            workspace.previewedRevision = -1
+            message = "The destination changed. Preview the link again before opening."
+            return .blocked(.smartRoutingUnavailable)
+        }
+        if isSmartRoutingActive { return await openAirlockNow(item) }
+        return await openAirlock(item, in: expected.target)
     }
 
     func openAirlockNow(_ item: AirlockItem) async -> RoutingOutcome {
@@ -708,6 +776,12 @@ final class BrowserStore {
             )
         }
 
+        guard launch != .privateWindow else {
+            let explanation = "Opened privately for this link only. Rules do not save private-window choices."
+            message = explanation
+            return AirlockChooserResult(routingOutcome: outcome, teachingRequested: true, teachingSucceeded: false, errorMessage: explanation)
+        }
+
         guard createRule(
                 domain: item.normalized.host,
                 scope: scope,
@@ -753,11 +827,12 @@ final class BrowserStore {
         browser: BrowserReference,
         profileID: UUID? = nil,
         browserProfile: BrowserProfileChoice? = nil,
+        isEnabled: Bool = true,
         source: ConfigurationSource = .manual
     ) -> DomainRule? {
         var configuration = routingConfiguration
         do {
-            let rule = try configurationEditor.createRule(
+            var rule = try configurationEditor.createRule(
                 domain: domain,
                 scope: scope,
                 browser: browser,
@@ -766,6 +841,10 @@ final class BrowserStore {
                 source: source,
                 in: &configuration
             )
+            if !isEnabled, let index = configuration.domainRules.firstIndex(where: { $0.id == rule.id }) {
+                rule.isEnabled = false
+                configuration.domainRules[index] = rule
+            }
             guard persist(configuration) else { return nil }
             message = "Saved a rule for \(rule.domain)."
             return rule
@@ -904,6 +983,11 @@ final class BrowserStore {
                 in: &configuration
             )
             guard persist(configuration) else { return false }
+            if workspace.browsedProfileID == profileID {
+                workspace.browsedProfileID = nil
+                workspace.draft = nil
+                workspace.savedDraft = nil
+            }
             message = "Deleted the rule set and its rules."
             return true
         } catch {
@@ -1054,13 +1138,17 @@ final class BrowserStore {
         return nil
     }
 
-    private func persist(_ configuration: RoutingConfiguration) -> Bool {
+    private func persist(_ configuration: RoutingConfiguration, recordingUndo: Bool = true) -> Bool {
+        let previous = routingConfiguration
         let outcome = smartRoutingCoordinator.applyConfiguration(
             configuration
         )
         reload()
         switch outcome {
         case .succeeded:
+            if recordingUndo, previous != routingConfiguration {
+                configurationUndo = (previous, routingConfiguration)
+            }
             return true
         case .failed(let issue), .degraded(let issue):
             message = smartRoutingMessage(for: issue)
@@ -1073,11 +1161,11 @@ final class BrowserStore {
         case .opened(let browser):
             message = "Opened the link in \(name(for: browser))."
         case .rejected(.duplicateDispatch):
-            message = "Linkpick stopped a repeated link."
+            message = "Rillvia stopped a repeated link."
         case .rejected(.unsupportedURL):
-            message = "Linkpick only opens HTTP and HTTPS links."
+            message = "Rillvia only opens HTTP and HTTPS links."
         case .rejected(.selfTarget):
-            message = "Linkpick cannot open a link in itself."
+            message = "Rillvia cannot open a link in itself."
         case .rejected(.explicitTargetUnavailable):
             message = "The selected browser is no longer available. Reinstall it or choose another browser."
         case .rejected:
@@ -1094,7 +1182,7 @@ final class BrowserStore {
     private func configurationMessage(for error: Error) -> String {
         switch error as? RoutingConfigurationIssue {
         case .selfTarget:
-            "Linkpick cannot be the browser a rule opens."
+            "Rillvia cannot be the browser a rule opens."
         case .invalidDomain:
             "Enter a valid domain."
         case .invalidName:
@@ -1104,7 +1192,7 @@ final class BrowserStore {
         case .missingRule:
             "That rule is no longer available."
         case nil:
-            "Linkpick could not save that change."
+            "Rillvia could not save that change."
         }
     }
 
@@ -1118,21 +1206,21 @@ final class BrowserStore {
         if message == "Enter a valid domain." {
             return "\(prefix) Check the domain, then try again."
         }
-        return "\(prefix) Reopen Linkpick, then try again."
+        return "\(prefix) Reopen Rillvia, then try again."
     }
 
     private var routingUnavailableMessage: String {
         switch routingState {
         case .smartSuspended:
-            "macOS changed the web-link handler. Linkpick will not take it back."
+            "macOS changed the web-link handler. Rillvia will not take it back."
         case .degraded(let issue):
             smartRoutingMessage(for: issue)
         case .direct:
-            "Linkpick is not sending links. Turn that on before rules can open links."
+            "Rillvia is not sending links. Turn that on before rules can open links."
         case .enabling, .disabling:
-            "Linkpick is still changing how links open."
+            "Rillvia is still changing how links open."
         case .smartActive:
-            "Linkpick cannot send links right now."
+            "Rillvia cannot send links right now."
         }
     }
 
@@ -1143,19 +1231,19 @@ final class BrowserStore {
         case .missingFallback:
             "Choose an installed browser for sites with no rule."
         case .selfFallback:
-            "Linkpick cannot be the browser used when no rule matches."
+            "Rillvia cannot be the browser used when no rule matches."
         case .fallbackUnavailable:
             "That browser is not installed. Reinstall it or choose another."
         case .smartRoutingNotEnabled:
-            "Linkpick is not sending links."
+            "Rillvia is not sending links."
         case .smartRoutingAlreadyEnabled:
-            "Linkpick is already sending links."
+            "Rillvia is already sending links."
         case .transitionCancelled:
             "That change was cancelled."
         case .handlerTransitionInProgress:
-            "Linkpick is still changing how links open."
+            "Rillvia is still changing how links open."
         case .configurationPersistenceFailed:
-            "Linkpick could not save this. Reopen the app and try again."
+            "Rillvia could not save this. Reopen the app and try again."
         case .handlerTransaction(let issue):
             transactionMessage(for: issue)
         }
@@ -1170,9 +1258,9 @@ final class BrowserStore {
     ) -> String {
         switch issue {
         case .smartRoutingUnavailable:
-            "You can use another browser for a while only while Linkpick is sending links."
+            "You can use another browser for a while only while Rillvia is sending links."
         case .selfTarget:
-            "Linkpick cannot be the temporary browser."
+            "Rillvia cannot be the temporary browser."
         case .targetUnavailable:
             "That browser is not installed, so nothing changed."
         case .noActiveLease:
@@ -1182,7 +1270,7 @@ final class BrowserStore {
         case .undoPreconditionFailed:
             "Undo is no longer available because the rules changed."
         case .configurationPersistenceFailed:
-            "Linkpick could not save the temporary browser."
+            "Rillvia could not save the temporary browser."
         }
     }
 
@@ -1195,20 +1283,20 @@ final class BrowserStore {
             if let browserName {
                 return "\(browserName) is not available. Reinstall it or choose another browser."
             }
-            return "The previous browser is not available, so Linkpick could not restore it."
+            return "The previous browser is not available, so Rillvia could not restore it."
         case .missingBaseline(let scheme):
             let schemeName = scheme.rawValue.uppercased()
-            return "Linkpick cannot safely change the \(schemeName) handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
+            return "Rillvia cannot safely change the \(schemeName) handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
         case .handlerChangeFailed:
             return "macOS did not change both web-link handlers. The previous handlers were restored."
         case .verificationFailed:
             return "macOS did not confirm both web-link handlers. The previous handlers were restored."
         case .handlersChangedExternally:
-            return "The web-link handlers changed elsewhere. Linkpick kept those changes. Choose a browser and make HTTP and HTTPS match."
+            return "The web-link handlers changed elsewhere. Rillvia kept those changes. Choose a browser and make HTTP and HTTPS match."
         case .rollbackFailed:
-            return "Linkpick could not restore both web-link handlers. Make HTTP and HTTPS match before trying again."
+            return "Rillvia could not restore both web-link handlers. Make HTTP and HTTPS match before trying again."
         case .statePersistenceFailed:
-            return "Linkpick could not save that browser change. Reopen the app and try again."
+            return "Rillvia could not save that browser change. Reopen the app and try again."
         case .noUndoReceipt:
             return "There is no browser change to undo."
         case .undoPreconditionFailed:
@@ -1265,9 +1353,9 @@ final class BrowserStore {
             case .targetUnavailable:
                 message = "That browser is unavailable, so the temporary switch is paused. Rules and \(defaultBrowserName) still apply."
             case .selfTarget:
-                message = "Linkpick cannot be the temporary browser. Rules and \(defaultBrowserName) still apply."
+                message = "Rillvia cannot be the temporary browser. Rules and \(defaultBrowserName) still apply."
             case .configurationPersistenceFailed:
-                message = "Linkpick could not check the temporary browser. Expired ones will not be used."
+                message = "Rillvia could not check the temporary browser. Expired ones will not be used."
             case nil, .smartRoutingUnavailable, .noActiveLease,
                     .noUndoReceipt, .undoPreconditionFailed:
                 break
@@ -1301,7 +1389,7 @@ final class BrowserStore {
         }
 
         icons = Dictionary(uniqueKeysWithValues: installed.map { browser in
-            let icon = NSWorkspace.shared.icon(forFile: browser.iconURL.path)
+            let icon = NSWorkspace.shared.icon(forFile: browser.iconURL.path == "/" ? browser.appURL.path : browser.iconURL.path)
             icon.size = NSSize(width: 64, height: 64)
             return (browser.id, icon)
         })

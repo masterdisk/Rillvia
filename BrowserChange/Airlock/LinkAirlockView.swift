@@ -1,295 +1,265 @@
+import AppKit
 import SwiftUI
 
 struct LinkAirlockView: View {
     @Environment(BrowserStore.self) private var store
-    @State private var input = ""
-    @State private var chooserItem: AirlockItem?
-
     var body: some View {
-        LinkpickPage(title: "Check a link", identifier: "airlock-title") {
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    TextEditor(text: $input)
-                        .font(.body.monospaced())
-                        .frame(minHeight: 92)
-                        .padding(6)
-                        .background(
-                            .quaternary.opacity(0.35),
-                            in: RoundedRectangle(cornerRadius: 10)
-                        )
-                        .accessibilityIdentifier("airlock-input")
-
-                    HStack {
-                        Button("Preview links", systemImage: "checkmark.shield") {
-                            store.stageAirlock(text: input)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("airlock-preview")
-
-                        Button("Clear") {
-                            input = ""
-                            store.clearAirlock()
-                        }
-                        .disabled(input.isEmpty && store.airlockResult.items.isEmpty)
-
-                        Spacer()
-
-                        Text(
-                            "Up to \(AirlockParser.defaultMaxURLCount) links · \(AirlockParser.defaultMaxTextLength.formatted()) characters"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                PageHeading(title: "Preview a link", subtitle: "See where it will open and why.", identifier: "airlock-title")
+                PreviewInputSection(compact: false)
+                if store.workspace.previewIsCurrent(revision: store.revision) {
+                    ForEach(store.airlockResult.items) { item in PreviewResultCard(item: item) }
+                } else if !store.airlockResult.items.isEmpty {
+                    Label("The link or routing changed. Preview again to see the current destination.", systemImage: "arrow.clockwise")
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ContentUnavailableView("Try a link", systemImage: "link", description: Text("Paste or drop an HTTP or HTTPS link above. Preview checks your local rules without opening the link."))
                 }
-                .dropDestination(for: URL.self) { urls, _ in
-                    store.stageAirlock(urls: urls)
-                    return true
-                }
-                .dropDestination(for: String.self) { strings, _ in
-                    store.stageAirlock(text: strings.joined(separator: "\n"))
-                    return true
-                }
-
-                if store.airlockResult.wasTextTruncated {
-                    Label(
-                        "Only the first \(AirlockParser.defaultMaxTextLength.formatted()) characters were inspected.",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                }
-                if store.airlockResult.wasURLLimitReached {
-                    Label(
-                        "Additional links were left unstaged.",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                }
-                if store.airlockResult.rejectedCandidateCount > 0 {
-                    Label(
-                        "\(store.airlockResult.rejectedCandidateCount) unsupported or malformed link candidate\(store.airlockResult.rejectedCandidateCount == 1 ? " was" : "s were") ignored.",
-                        systemImage: "xmark.shield"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(store.airlockResult.items) { item in
-                        AirlockItemCard(item: item) {
-                            chooserItem = item
-                        }
-                    }
-                }
-            }
+                StoreNotice()
+            }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .sheet(item: $chooserItem) { item in
-            BrowserChooserView(item: item)
+        .dropDestination(for: String.self) { values, _ in
+            store.workspace.previewInput = values.joined(separator: "\n")
+            preview()
+            return true
         }
+        .dropDestination(for: URL.self) { values, _ in
+            store.workspace.previewInput = values.map(\.absoluteString).joined(separator: "\n")
+            preview()
+            return true
+        }
+    }
+    private func preview() {
+        store.stageAirlock(text: store.workspace.previewInput)
+        store.workspace.markPreview(input: store.workspace.previewInput, revision: store.revision)
     }
 }
 
-private struct AirlockItemCard: View {
+struct PreviewInputSection: View {
     @Environment(BrowserStore.self) private var store
-    var item: AirlockItem
-    var showChooser: () -> Void
-
+    var compact: Bool
+    @FocusState private var urlIsFocused: Bool
     var body: some View {
-        let decision = store.prediction(for: item)
-
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.normalized.host)
-                        .font(.body.weight(.semibold))
-                        .textSelection(.enabled)
-                    if let decision {
-                        Text(store.displayName(for: decision.target))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("airlock-predicted-browser")
-                        Text(decision.reason.summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Linkpick is not sending links")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-            }
-
-            if !item.warnings.isEmpty {
+        @Bindable var workspace = store.workspace
+        VStack(alignment: .leading, spacing: 14) {
+            if compact {
                 VStack(alignment: .leading, spacing: 5) {
-                    ForEach(Array(item.warnings.enumerated()), id: \.offset) {
-                        _, warning in
-                        Label(
-                            warning.message,
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    }
+                    Text("Try a link").font(.system(size: 23, weight: .bold))
+                    Text("See the browser and rule before opening.").foregroundStyle(.secondary)
                 }
             }
-
-            HStack {
-                Button("Open now") {
-                    Task { await store.openAirlockNow(item) }
+            HStack(alignment: .top, spacing: 10) {
+                TextField("https://example.com", text: $workspace.previewInput, axis: compact ? .horizontal : .vertical)
+                    .textFieldStyle(.plain).padding(12)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(urlIsFocused ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: urlIsFocused ? 2 : 1))
+                    .focused($urlIsFocused).onSubmit(preview)
+                    .accessibilityLabel("Link to preview").accessibilityIdentifier("airlock-input")
+                Button(action: preview) { Text("Preview").frame(minWidth: 100, minHeight: 24) }.buttonStyle(.glassProminent).controlSize(.large)
+                    .disabled(workspace.previewInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("airlock-preview")
+            }
+            if !compact {
+                HStack {
+                    Label("Preview checks your local rules. It does not open or fetch the link.", systemImage: "lock")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
+                    Button("Clear") { workspace.previewInput = ""; workspace.previewedInput = ""; store.clearAirlock() }
+                        .disabled(workspace.previewInput.isEmpty)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(decision == nil)
-
-                Button("Open in…") {
-                    showChooser()
-                }
-                .accessibilityIdentifier("airlock-open-in")
+            }
+            if workspace.previewIsCurrent(revision: store.revision), store.airlockResult.items.isEmpty {
+                Text("Enter a complete HTTP or HTTPS link, such as https://example.com.").foregroundStyle(.orange)
+                    .accessibilityIdentifier("airlock-error")
+            }
+            if store.airlockResult.rejectedCandidateCount > 0 {
+                Text("\(store.airlockResult.rejectedCandidateCount) invalid or unsupported links were left out.").font(.callout).foregroundStyle(.secondary)
+            }
+            if store.airlockResult.wasURLLimitReached || store.airlockResult.wasTextTruncated {
+                Text("Preview accepts up to 20 links and 100,000 characters at a time.").font(.callout).foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 8)
+        .onAppear { if workspace.focus == .url { urlIsFocused = true } }
+        .onChange(of: workspace.focusRequest) { _, _ in if workspace.focus == .url { urlIsFocused = true } }
+    }
+    private func preview() {
+        store.stageAirlock(text: store.workspace.previewInput)
+        store.workspace.markPreview(input: store.workspace.previewInput, revision: store.revision)
     }
 }
 
-private struct BrowserChooserView: View {
+struct PreviewResultCard: View {
+    @Environment(BrowserStore.self) private var store
+    let item: AirlockItem
+    var compact = false
+    @State private var showOriginal = false
+    @State private var isOpening = false
+    private var decision: RoutingDecision? { store.prediction(for: item) }
+    private var browser: InstalledBrowser? { store.externalBrowsers.first { $0.reference == decision?.target } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if !compact {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(item.normalized.host).font(.system(size: 22, weight: .semibold)).textSelection(.enabled)
+                    DisclosureGroup("Original link", isExpanded: $showOriginal) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(item.normalized.originalURL.absoluteString).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                            Button("Copy original link") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(item.normalized.originalURL.absoluteString, forType: .string) }
+                        }.padding(.top, 8)
+                    }
+                }
+                Divider()
+                Text("Why this browser?").font(.headline)
+            }
+            if compact {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) { destination.frame(minWidth: 230); HStack(spacing: 12) { actions } }
+                    VStack(alignment: .leading, spacing: 16) { destination; HStack(spacing: 12) { actions } }
+                }
+            } else { destination }
+
+            if !compact {
+                ForEach(item.warnings, id: \.self) { warning in
+                    Label(warning.message, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
+                if !item.warnings.isEmpty {
+                    Text("These notes describe the URL. Rillvia does not scan the destination.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if !compact {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { actions }
+                    VStack(alignment: .leading, spacing: 10) { actions }
+                }
+            }
+        }
+        .padding(compact ? 0 : 22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(compact ? Color.clear : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+    }
+    private var destination: some View {
+            HStack(alignment: .center, spacing: 14) {
+                BrowserIcon(browser: browser, size: compact ? 38 : 44)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(browser.map { store.browserChoiceLabel($0.reference, profile: decision?.browserProfile) } ?? "No browser available").font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(reasonText).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+    }
+    @ViewBuilder private var actions: some View {
+        Button("Open in \(browser?.name ?? "browser")") {
+            guard let decision else { return }
+            isOpening = true
+            let revision = store.revision
+            Task { _ = await store.openPreview(item, expected: decision, revision: revision); isOpening = false }
+        }
+        .buttonStyle(.glassProminent).controlSize(.large)
+        .keyboardShortcut(store.airlockResult.items.count == 1 ? KeyboardShortcut(.return, modifiers: .command) : nil)
+        .disabled(decision == nil || isOpening || !store.workspace.previewIsCurrent(revision: store.revision))
+        .accessibilityIdentifier("airlock-open-now")
+        if let ruleID = matchedRuleID {
+            Button("Edit rule") { store.editRule(ruleID) }.buttonStyle(.link).accessibilityIdentifier("airlock-edit-rule")
+        }
+        if !compact {
+            Button("Choose another browser") { store.workspace.chooserItem = item }.buttonStyle(.glass).controlSize(.large)
+                .accessibilityIdentifier("airlock-open-in")
+        }
+    }
+    private var matchedRuleID: UUID? {
+        switch decision?.reason {
+        case .activeProfileExactHost(let id), .activeProfileParentDomain(let id), .globalExactHost(let id), .globalParentDomain(let id): id
+        default: nil
+        }
+    }
+    private var reasonText: String {
+        if let id = matchedRuleID, let rule = store.routingConfiguration.domainRules.first(where: { $0.id == id }) {
+            let set = store.routingConfiguration.profiles.first { $0.id == rule.profileID }?.name ?? "Shared rules"
+            return "Matches \(rule.domain) in \(set)"
+        }
+        if decision?.reason == .externalFallback { return store.isSmartRoutingActive ? "No rule matches. Uses Other links." : store.isSmartRoutingConfigured ? "Rules are paused. Uses the current macOS default." : "Rules are off. Uses the current macOS default." }
+        return decision?.reason.summary ?? "Choose an installed browser to open this link."
+    }
+}
+
+struct BrowserChooserView: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    var item: AirlockItem
-
+    let item: AirlockItem
+    @State private var browserID = ""
+    @State private var search = ""
+    @State private var browserProfileID = ""
+    @State private var privateWindow = false
     @State private var alwaysOpen = false
     @State private var scope: DomainRuleScope = .exactHost
     @State private var profileID: UUID?
-    @State private var errorMessage: String?
+    @State private var error: String?
     @State private var isOpening = false
-
+    @FocusState private var searchFocused: Bool
+    private var selected: InstalledBrowser? { store.externalBrowsers.first { $0.id == browserID } }
+    private var choices: [BrowserProfileChoice] { selected.map { store.browserProfiles(for: $0.id) } ?? [] }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Open in…")
-                    .font(.title2.weight(.semibold))
-                    .accessibilityIdentifier(
-                        "browser-chooser-title"
-                    )
-                Text(item.normalized.host)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(.secondary)
+            PageHeading(title: "Choose a browser", subtitle: item.normalized.host, identifier: "airlock-chooser-title")
+            TextField("Search browsers", text: $search).textFieldStyle(.roundedBorder).focused($searchFocused)
+            ScrollView {
+                VStack(spacing: 5) {
+                    ForEach(store.externalBrowsers.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { browser in
+                        Button {
+                            browserID = browser.id; browserProfileID = ""; privateWindow = false
+                        } label: {
+                            HStack(spacing: 12) {
+                                BrowserIcon(browser: browser)
+                                Text(browser.name).fixedSize(horizontal: false, vertical: true)
+                                Spacer()
+                                if browserID == browser.id { Image(systemName: "checkmark").foregroundStyle(.blue) }
+                            }.padding(10).frame(maxWidth: .infinity).contentShape(Rectangle())
+                                .background(browserID == browser.id ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 9))
+                        }.buttonStyle(.plain).accessibilityIdentifier("chooser-browser-\(browser.name)")
+                    }
+                }
+            }.frame(maxHeight: 160)
+            if !choices.isEmpty {
+                Picker("Browser profile", selection: $browserProfileID) {
+                    Text("Default profile").tag("")
+                    ForEach(choices) { Text($0.name).tag($0.id) }
+                }.disabled(privateWindow)
             }
-
-            Toggle("Always open this site here", isOn: $alwaysOpen)
-                .accessibilityIdentifier("chooser-always")
-
+            if let selected, store.supportsPrivateWindow(selected.id) {
+                Toggle("Open this link in a private window", isOn: $privateWindow)
+                    .onChange(of: privateWindow) { _, value in if value { alwaysOpen = false; browserProfileID = "" } }
+            }
+            Toggle("Always open this site in this browser", isOn: $alwaysOpen).disabled(privateWindow)
+                .accessibilityIdentifier("airlock-always-open")
+            if privateWindow { Text("This link only. Private-window choices are not saved in rules.").font(.callout).foregroundStyle(.secondary) }
             if alwaysOpen {
-                Picker("Match", selection: $scope) {
-                    Text("This site").tag(DomainRuleScope.exactHost)
-                    Text("This site and subdomains").tag(
-                        DomainRuleScope.includeSubdomains
-                    )
-                }
-                .pickerStyle(.radioGroup)
-
+                Picker("Match", selection: $scope) { Text("Only this domain").tag(DomainRuleScope.exactHost); Text("Include subdomains").tag(DomainRuleScope.includeSubdomains) }
                 Picker("Rule set", selection: $profileID) {
-                    Text("Everywhere").tag(UUID?.none)
-                    ForEach(store.routingConfiguration.profiles) { profile in
-                        Text(profile.name).tag(Optional(profile.id))
-                    }
+                    Text("Shared rules").tag(Optional<UUID>.none)
+                    ForEach(store.routingConfiguration.profiles) { Text($0.name).tag(Optional($0.id)) }
                 }
             }
-
-            if let errorMessage {
-                Label(
-                    errorMessage,
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.callout)
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("chooser-error")
-                .accessibilityLabel(errorMessage)
-            }
-
-            Divider()
-
-            ForEach(store.externalBrowsers) { browser in
-                chooserButton(
-                    title: "Open in \(browser.name)",
-                    identifier: "chooser-open-\(browser.name)",
-                    browser: browser,
-                    launch: .standard
-                )
-
-                let profiles = store.browserProfiles(for: browser.id)
-                if profiles.count > 1 {
-                    ForEach(profiles) { profile in
-                        chooserButton(
-                            title: "Open in \(browser.name) · \(profile.name)",
-                            identifier: "chooser-profile-\(browser.name)-\(profile.key)",
-                            browser: browser,
-                            launch: .profile(profile)
-                        )
-                    }
-                }
-
-                if store.supportsPrivateWindow(browser.id) {
-                    chooserButton(
-                        title: "Open in \(browser.name) private",
-                        identifier: "chooser-private-\(browser.name)",
-                        browser: browser,
-                        launch: .privateWindow
-                    )
-                }
-            }
-
-            Button("Cancel", role: .cancel) {
-                dismiss()
-            }
-            .disabled(isOpening)
-        }
-        .padding(24)
-        .frame(width: 480)
-        .onChange(of: alwaysOpen) {
-            if !alwaysOpen {
-                errorMessage = nil
-            }
-        }
-    }
-
-    private func chooserButton(
-        title: String,
-        identifier: String,
-        browser: InstalledBrowser,
-        launch: BrowserLaunchMode
-    ) -> some View {
-        Button {
-            let teachingScope = alwaysOpen ? scope : nil
-            isOpening = true
-            errorMessage = nil
-            Task {
-                let result = await store.openAirlockFromChooser(
-                    item,
-                    in: browser.reference,
-                    always: teachingScope,
-                    profileID: alwaysOpen ? profileID : nil,
-                    launch: launch
-                )
-                isOpening = false
-                if result.shouldDismiss {
-                    dismiss()
-                } else {
-                    errorMessage = result.errorMessage
-                }
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Image(nsImage: store.icon(for: browser))
-                    .resizable()
-                    .frame(width: 24, height: 24)
-                Text(title)
+            if let error { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("airlock-chooser-error") }
+            HStack {
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(isOpening)
                 Spacer()
+                Button("Open in \(selected?.name ?? "browser")") { open() }.buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction).disabled(selected == nil || isOpening).accessibilityIdentifier("chooser-open")
             }
-            .frame(maxWidth: .infinity)
+        }.padding(28).frame(width: 510)
+        .onAppear { browserID = store.prediction(for: item)?.target.bundleIdentifier ?? store.externalBrowsers.first?.id ?? ""; profileID = store.routingConfiguration.activeProfileID }
+        .background(Button("Search browsers") { searchFocused = true }.keyboardShortcut("f").hidden())
+    }
+    private func open() {
+        guard let selected else { return }
+        isOpening = true
+        let profile = choices.first { $0.id == browserProfileID }
+        let launch: BrowserLaunchMode = privateWindow ? .privateWindow : profile.map(BrowserLaunchMode.profile) ?? .standard
+        Task {
+            let result = await store.openAirlockFromChooser(item, in: selected.reference, always: alwaysOpen ? scope : nil, profileID: profileID, launch: launch)
+            isOpening = false
+            if result.shouldDismiss { dismiss() } else { error = result.errorMessage }
         }
-        .disabled(isOpening)
-        .accessibilityIdentifier(identifier)
     }
 }

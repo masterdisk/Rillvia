@@ -6,24 +6,27 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var store = store
+        @Bindable var workspace = store.workspace
         Group {
             if store.browsers.isEmpty {
                 ContentUnavailableView(
                     "No browsers found",
                     systemImage: "globe",
-                    description: Text("Linkpick looks for apps that open http and https links.")
+                    description: Text("Rillvia looks for apps that open http and https links.")
                 )
             } else {
                 NavigationSplitView {
                     BrowserSidebar()
-                        .navigationSplitViewColumnWidth(min: 208, ideal: 232, max: 280)
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 232, max: 300)
                 } detail: {
                     BrowserWorkspace()
                 }
                 .navigationSplitViewStyle(.balanced)
             }
         }
-        .frame(minWidth: 800, minHeight: 560)
+        .font(.system(size: 15))
+        .buttonBorderShape(.roundedRectangle)
+        .frame(minWidth: 820, minHeight: 580)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Refresh browsers", systemImage: "arrow.clockwise") {
@@ -60,6 +63,27 @@ struct ContentView: View {
             PreviewTimeMachineView()
                 .environment(store)
         }
+        .sheet(item: $workspace.chooserItem) { item in
+            BrowserChooserView(item: item).environment(store)
+        }
+        .sheet(isPresented: $workspace.showTemporaryBrowser) {
+            TemporaryBrowserSheet().environment(store)
+        }
+        .sheet(isPresented: $workspace.showKeyboardShortcuts) {
+            KeyboardShortcutsView()
+        }
+        .sheet(isPresented: $workspace.showTutorial) {
+            IntroView { store.workspace.showTutorial = false }.environment(store)
+        }
+        .sheet(isPresented: $workspace.showRuleSets) {
+            RuleSetsSheet().environment(store)
+        }
+        .alert("Discard unsaved changes?", isPresented: $workspace.showDiscardChanges) {
+            Button("Keep editing", role: .cancel) { store.workspace.keepEditing() }
+            Button("Discard changes", role: .destructive) { store.workspace.discardAndContinue() }
+        } message: {
+            Text("Your saved rule stays unchanged.")
+        }
         .background {
             KeyCatcher()
         }
@@ -76,6 +100,12 @@ private struct KeyCatcher: View {
             .onAppear {
                 guard monitor == nil else { return }
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+                    if modifiers == [.command], event.charactersIgnoringModifiers == "z",
+                       !(NSApp.keyWindow?.firstResponder is NSTextView), store.canUndoConfiguration {
+                        store.workspace.request { _ = store.undoConfigurationChange() }
+                        return nil
+                    }
                     let blocked = event.modifierFlags.intersection([.command, .control, .option])
                     if blocked.isEmpty, let characters = event.charactersIgnoringModifiers {
                         let text = characters

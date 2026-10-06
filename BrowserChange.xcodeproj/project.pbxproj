@@ -24,14 +24,23 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A10000000000000000000001 /* BrowserChange.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BrowserChange.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000001 /* BrowserChange.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Rillvia.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000011 /* BrowserChangeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowserChangeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000001 /* BrowserChangeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrowserChangeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+        C10000000000000000000002 /* App resource exceptions */ = {
+            isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+            membershipExceptions = (Info.plist,);
+            target = A10000000000000000000006 /* BrowserChange */;
+        };
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A10000000000000000000002 /* BrowserChange */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+            exceptions = (C10000000000000000000002 /* App resource exceptions */,);
 			path = BrowserChange;
 			sourceTree = "<group>";
 		};
@@ -101,6 +110,7 @@
 			buildPhases = (
 				A10000000000000000000008 /* Sources */,
 				A10000000000000000000003 /* Frameworks */,
+                C10000000000000000000001 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -203,6 +213,15 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+        C10000000000000000000001 /* Resources */ = {
+            isa = PBXResourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = ();
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A10000000000000000000008 /* Sources */ = {
@@ -309,7 +328,8 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.browserchange.BrowserChange;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = BrowserChange;
+				PRODUCT_NAME = Rillvia;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -336,7 +356,8 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.browserchange.BrowserChange;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = BrowserChange;
+				PRODUCT_NAME = Rillvia;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -357,7 +378,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BrowserChange.app/Contents/MacOS/BrowserChange";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Rillvia.app/Contents/MacOS/Rillvia";
 			};
 			name = Debug;
 		};
@@ -375,7 +396,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BrowserChange.app/Contents/MacOS/BrowserChange";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Rillvia.app/Contents/MacOS/Rillvia";
 			};
 			name = Release;
 		};

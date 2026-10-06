@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct LinkpickPage<Content: View>: View {
+struct RillviaPage<Content: View>: View {
     var title: String
     var identifier: String
     @ViewBuilder var content: () -> Content

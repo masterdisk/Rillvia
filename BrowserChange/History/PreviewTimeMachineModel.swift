@@ -126,8 +126,8 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
         if previous.mode != current.mode {
             result.append(
                 current.mode == .smart
-                    ? "Started sending links through Linkpick."
-                    : "Stopped sending links through Linkpick."
+                    ? "Started sending links through Rillvia."
+                    : "Stopped sending links through Rillvia."
             )
         }
 
@@ -319,11 +319,11 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
         case .unsupportedURL:
             "Enter an HTTP or HTTPS URL."
         case .smartRoutingUnavailable:
-            "Linkpick was not sending links in this snapshot."
+            "Rillvia was not sending links in this snapshot."
         case .missingFallback:
             "No installed browser can open this link in this snapshot."
         case .selfTarget:
-            "This snapshot points back to Linkpick and cannot be checked."
+            "This snapshot points back to Rillvia and cannot be checked."
         case .explicitTargetUnavailable:
             "The selected browser is no longer available."
         case .duplicateDispatch, .launchFailed:

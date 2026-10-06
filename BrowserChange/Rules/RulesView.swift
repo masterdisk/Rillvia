@@ -2,318 +2,230 @@ import SwiftUI
 
 struct RulesView: View {
     @Environment(BrowserStore.self) private var store
-    @State private var domain = ""
-    @State private var scope: DomainRuleScope = .exactHost
-    @State private var browserID = ""
-    @State private var browserProfileKey = ""
-    @State private var profileID: UUID?
-    @State private var editingRule: DomainRule?
-    @State private var formError: String?
-
+    @FocusState private var searchFocused: Bool
+    private var workspace: WorkspaceModel { store.workspace }
+    private var setName: String { store.routingConfiguration.profiles.first { $0.id == workspace.browsedProfileID }?.name ?? "Shared rules" }
+    private var rules: [DomainRule] {
+        store.routingConfiguration.domainRules.filter {
+            $0.profileID == workspace.browsedProfileID && (workspace.ruleSearch.isEmpty || $0.domain.localizedCaseInsensitiveContains(workspace.ruleSearch) || store.displayName(for: $0.browser).localizedCaseInsensitiveContains(workspace.ruleSearch))
+        }.sorted { $0.domain.localizedStandardCompare($1.domain) == .orderedAscending }
+    }
     var body: some View {
-        LinkpickPage(title: "Rules", identifier: "rules-title") {
-            ruleSection(title: "Everywhere", profileID: nil)
-            ForEach(store.routingConfiguration.profiles) { profile in
-                ruleSection(title: profile.name, profileID: profile.id)
-            }
-            Section("New rule") {
-                addRuleCard
+        @Bindable var workspace = store.workspace
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(setName).font(.system(size: 25, weight: .bold)).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rules-title")
+                        Text("\(rules.count) \(rules.count == 1 ? "rule" : "rules")").foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 5)
+                    Button("New rule", systemImage: "plus") { newRule() }.labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.large)
+                        .help("New rule (⌘N)").accessibilityIdentifier("new-rule")
+                }
+                TextField("Search rules", text: $workspace.ruleSearch).textFieldStyle(.roundedBorder).focused($searchFocused).accessibilityIdentifier("rule-search")
+                if let profileID = workspace.browsedProfileID, store.routingConfiguration.activeProfileID != profileID {
+                    Button("Make \(setName) active") { _ = store.selectProfile(profileID) }.buttonStyle(.glass)
+                        .accessibilityIdentifier("activate-browsed-rule-set")
+                }
+                if rules.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(workspace.ruleSearch.isEmpty ? "No rules yet" : "No matching rules").font(.headline)
+                        Text(workspace.ruleSearch.isEmpty ? "Add a domain and choose where its links should open." : "Try another domain or browser name.").font(.callout).foregroundStyle(.secondary)
+                        if workspace.ruleSearch.isEmpty { Button("Add a rule") { newRule() } }
+                    }.padding(.vertical, 14)
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 4) {
+                            ForEach(rules) { rule in
+                                ruleRow(rule)
+                            }
+                        }
+                    }
+                }
+                if workspace.browsedProfileID == nil {
+                    Text("Shared rules apply alongside the active rule set. A matching rule in that set takes priority.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }.padding(20).frame(width: 255)
+            Divider()
+            if let draft = workspace.draft {
+                RuleDraftEditor(draft: Binding(get: { workspace.draft ?? draft }, set: { workspace.draft = $0 }))
+            } else {
+                VStack {
+                    ContentUnavailableView("Choose a rule", systemImage: "arrow.triangle.branch", description: Text("Select a domain to edit it, or add a new rule."))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    StoreNotice().padding(28)
+                }
             }
         }
         .onAppear {
-            syncBrowserSelection()
+            if !workspace.didChooseRuleSet {
+                workspace.browsedProfileID = store.routingConfiguration.activeProfileID
+                workspace.didChooseRuleSet = true
+            }
+            if workspace.draft == nil, let first = rules.first { workspace.load(first) }
         }
-        .onChange(of: store.externalBrowsers.map(\.id)) { _, ids in
-            syncBrowserSelection(availableIDs: ids)
-        }
-        .sheet(item: $editingRule) { rule in
-            RuleEditView(rule: rule)
+        .onChange(of: workspace.focusRequest) { _, _ in if workspace.focus == .search { searchFocused = true } }
+    }
+    private func newRule() {
+        workspace.request {
+            workspace.startRule(browserID: store.smartFallbackBrowser?.id ?? store.externalBrowsers.first?.id ?? "", profileID: workspace.browsedProfileID)
         }
     }
-
-    private var addRuleCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("Domain or pasted link", text: $domain)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("rule-domain-field")
-
-            HStack {
-                Picker("Scope", selection: $scope) {
-                    Text("This site").tag(DomainRuleScope.exactHost)
-                    Text("This site and subdomains").tag(
-                        DomainRuleScope.includeSubdomains
-                    )
+    private func ruleRow(_ rule: DomainRule) -> some View {
+        Button { workspace.request { workspace.load(rule) } } label: {
+            HStack(spacing: 11) {
+                Image(systemName: "globe").font(.system(size: 21)).foregroundStyle(rule.isEnabled ? Color.accentColor : .secondary).frame(width: 28)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(rule.domain).font(.body.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+                    Text(store.browserChoiceLabel(rule.browser, profile: rule.browserProfile)).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if !rule.isEnabled { Text("Off").font(.caption).foregroundStyle(.secondary) }
                 }
-
-                Picker("Browser", selection: $browserID) {
-                    ForEach(store.externalBrowsers) { browser in
-                        Text(browser.name).tag(browser.id)
+                Spacer(minLength: 0)
+            }.padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                .background(workspace.draft?.id == rule.id ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.plain).accessibilityIdentifier("rule-row-\(rule.domain)")
+            .contextMenu {
+                Button(rule.isEnabled ? "Turn rule off" : "Turn rule on") {
+                    workspace.request {
+                        if store.setRuleEnabled(rule.id, isEnabled: !rule.isEnabled), let updated = store.routingConfiguration.domainRules.first(where: { $0.id == rule.id }), workspace.draft?.id == rule.id { workspace.load(updated) }
                     }
                 }
-
-                if browserProfiles.count > 1 {
-                    Picker("Browser profile", selection: $browserProfileKey) {
-                        Text("Usual window").tag("")
-                        ForEach(browserProfiles) { profile in
-                            Text(profile.name).tag(profile.id)
-                        }
-                    }
-                    .accessibilityIdentifier("rule-browser-profile")
-                }
-
-                Picker("Put in", selection: $profileID) {
-                    Text("Everywhere").tag(UUID?.none)
-                    ForEach(store.routingConfiguration.profiles) { profile in
-                        Text(profile.name).tag(Optional(profile.id))
+                Button("Delete rule", role: .destructive) {
+                    workspace.request {
+                        if store.deleteRule(rule.id), workspace.draft?.id == rule.id { workspace.draft = nil; workspace.savedDraft = nil }
                     }
                 }
             }
-
-            if let formError {
-                Text(formError)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .accessibilityIdentifier("rule-form-error")
-            } else if canCreateRule {
-                Text("Create a rule for this domain.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Enter a domain or paste a link.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("rule-form-hint")
-            }
-
-            Button("Create rule") {
-                submitNewRule()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!canCreateRule)
-        }
-    }
-
-    private func ruleSection(title: String, profileID: UUID?) -> some View {
-        let rules = store.routingConfiguration.domainRules.filter {
-            $0.profileID == profileID
-        }
-        let inUse = store.routingConfiguration.activeProfileID == profileID
-            || profileID == nil
-        return Section {
-            if rules.isEmpty {
-                Text("No rules in \(title).")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(rules) { rule in
-                    ruleCard(rule)
-                }
-            }
-        } header: {
-            Text(inUse ? "\(title) · in use" : title)
-        }
-    }
-
-    private func ruleCard(_ rule: DomainRule) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(rule.domain)
-                    .font(.body.weight(.semibold))
-                    .textSelection(.enabled)
-                Text(
-                    "\(scopeTitle(rule.scope)) · \(store.browserChoiceLabel(rule.browser, profile: rule.browserProfile))"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Toggle(
-                "Enabled",
-                isOn: Binding(
-                    get: { rule.isEnabled },
-                    set: {
-                        _ = store.setRuleEnabled(
-                            rule.id,
-                            isEnabled: $0
-                        )
-                    }
-                )
-            )
-            .labelsHidden()
-
-            Button("Edit") {
-                editingRule = rule
-            }
-
-            Button("Delete", role: .destructive) {
-                _ = store.deleteRule(rule.id)
-            }
-        }
-        .opacity(rule.isEnabled ? 1 : 0.62)
-    }
-
-    private var browserProfiles: [BrowserProfileChoice] {
-        store.browserProfiles(for: browserID)
-    }
-
-    private var selectedBrowserProfile: BrowserProfileChoice? {
-        browserProfiles.first { $0.id == browserProfileKey }
-    }
-
-    private var selectedBrowser: InstalledBrowser? {
-        store.externalBrowsers.first(where: { $0.id == browserID })
-            ?? store.externalBrowsers.first
-    }
-
-    private var canCreateRule: Bool {
-        (try? URLNormalizer.normalizeHost(domain)) != nil
-            && selectedBrowser != nil
-    }
-
-    private func syncBrowserSelection(
-        availableIDs: [String]? = nil
-    ) {
-        let ids = availableIDs ?? store.externalBrowsers.map(\.id)
-        if browserID.isEmpty || !ids.contains(browserID) {
-            browserID = ids.first ?? ""
-            browserProfileKey = ""
-        }
-    }
-
-    private func submitNewRule() {
-        formError = nil
-        guard let host = try? URLNormalizer.normalizeHost(domain) else {
-            formError = domain.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            ).isEmpty
-                ? "Enter a domain or paste a link."
-                : "That doesn’t look like a domain."
-            return
-        }
-        guard let browser = selectedBrowser else {
-            formError = "Choose a browser first."
-            return
-        }
-        if store.createRule(
-            domain: host,
-            scope: scope,
-            browser: browser.reference,
-            profileID: profileID,
-            browserProfile: selectedBrowserProfile
-        ) != nil {
-            domain = ""
-        } else {
-            formError = store.message
-        }
-    }
-
-    private func scopeTitle(_ scope: DomainRuleScope) -> String {
-        switch scope {
-        case .exactHost:
-            "This site"
-        case .includeSubdomains:
-            "This site and subdomains"
-        }
-    }
-
-    private func profileName(_ id: UUID?) -> String {
-        guard let id else { return "Everywhere" }
-        return store.routingConfiguration.profiles.first {
-            $0.id == id
-        }?.name ?? "Missing rule set"
     }
 }
 
-private struct RuleEditView: View {
+struct RuleDraftEditor: View {
+    @Environment(BrowserStore.self) private var store
+    @Binding var draft: RuleDraft
+    @State private var error: String?
+    @State private var showScopePicker = false
+    @State private var showBrowserPicker = false
+    private var browser: InstalledBrowser? { store.externalBrowsers.first { $0.id == draft.browserID } }
+    private var profiles: [BrowserProfileChoice] { browser.map { store.browserProfiles(for: $0.id) } ?? [] }
+    private var isValid: Bool { draft.normalizedDomain != nil && browser != nil }
+    private var setName: String { store.routingConfiguration.profiles.first { $0.id == draft.profileID }?.name ?? "Shared rules" }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                PageHeading(title: draft.id == nil ? "New rule" : draft.normalizedDomain ?? draft.domain, subtitle: "Rule in \(setName)", identifier: "rule-editor-title")
+                Divider()
+                FieldCaption(title: "Domain") {
+                    TextField("example.com or a full URL", text: $draft.domain).textFieldStyle(.roundedBorder).controlSize(.large).accessibilityIdentifier("rule-domain")
+                    if !draft.domain.isEmpty, draft.normalizedDomain == nil {
+                        Text("Enter a valid domain or an HTTP or HTTPS link.").font(.callout).foregroundStyle(.red)
+                    } else if let normalized = draft.normalizedDomain, normalized != draft.domain {
+                        Text("Saves as \(normalized)").font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                FieldCaption(title: "Match") {
+                    WideSelector(label: "Domain matching", selectedID: draft.scope.rawValue,
+                        choices: [SelectorChoice(id: DomainRuleScope.exactHost.rawValue, title: "Only this domain"), SelectorChoice(id: DomainRuleScope.includeSubdomains.rawValue, title: "This domain and its subdomains")], isPresented: $showScopePicker) { id in
+                        if let scope = DomainRuleScope(rawValue: id) { draft.scope = scope }
+                    }.accessibilityIdentifier("rule-scope")
+                }
+                FieldCaption(title: "Browser") {
+                    WideSelector(label: "Browser for this rule", selectedID: draft.browserID,
+                        choices: store.externalBrowsers.map { SelectorChoice(id: $0.id, title: $0.name, icon: store.icon(for: $0)) }, isPresented: $showBrowserPicker) { draft.browserID = $0 }
+                        .accessibilityIdentifier("rule-browser")
+                        .onChange(of: draft.browserID) { _, _ in draft.browserProfileID = "" }
+                }
+                DisclosureGroup("More options") {
+                    VStack(alignment: .leading, spacing: 15) {
+                        Picker("Rule set", selection: $draft.profileID) {
+                            Text("Shared rules").tag(Optional<UUID>.none)
+                            ForEach(store.routingConfiguration.profiles) { Text($0.name).tag(Optional($0.id)) }
+                        }
+                        if !profiles.isEmpty {
+                            Picker("Browser profile", selection: $draft.browserProfileID) {
+                                Text("Default profile").tag("")
+                                ForEach(profiles) { Text($0.name).tag($0.id) }
+                            }
+                        }
+                        Toggle("Rule is on", isOn: $draft.isEnabled).accessibilityLabel("Rule for \(draft.normalizedDomain ?? "this domain") is on")
+                    }.padding(.top, 12)
+                }
+                Text(draft.profileID == nil ? "Applies alongside your active rule set." : "Applies while \(setName) is active.").font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Divider()
+                FieldCaption(title: "Preview") {
+                    HStack(spacing: 12) {
+                        Image(systemName: "globe").foregroundStyle(.secondary)
+                        Text(draft.normalizedDomain ?? "Your domain").fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                        BrowserIcon(browser: browser)
+                        Text(browser?.name ?? "Choose a browser").fixedSize(horizontal: false, vertical: true)
+                    }.font(.callout).padding(14).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+                }
+                if let error { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rule-save-error") }
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    Button("Cancel") { store.workspace.cancelRule(); error = nil }.buttonStyle(.glass).controlSize(.large)
+                    Button(draft.id == nil ? "Save rule" : "Save changes", action: save).buttonStyle(.glassProminent).controlSize(.large)
+                        .keyboardShortcut("s").disabled(!isValid || !store.workspace.hasUnsavedRule).accessibilityIdentifier("save-rule")
+                }
+                StoreNotice()
+            }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+    private func save() {
+        guard let domain = draft.normalizedDomain, let browser else { return }
+        let browserProfile = profiles.first { $0.id == draft.browserProfileID }
+        let savedID: UUID?
+        if let id = draft.id {
+            savedID = store.updateRule(id, domain: domain, scope: draft.scope, browser: browser.reference, profileID: draft.profileID, browserProfile: browserProfile, isEnabled: draft.isEnabled) ? id : nil
+        } else {
+            savedID = store.createRule(domain: domain, scope: draft.scope, browser: browser.reference, profileID: draft.profileID, browserProfile: browserProfile, isEnabled: draft.isEnabled)?.id
+        }
+        if let id = savedID, let rule = store.routingConfiguration.domainRules.first(where: { $0.id == id }) {
+            store.workspace.browsedProfileID = rule.profileID
+            store.workspace.load(rule)
+            error = nil
+        } else { error = store.message ?? "The rule could not be saved. Try again." }
+    }
+}
+
+struct RuleSetsSheet: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    var rule: DomainRule
-
-    @State private var domain: String
-    @State private var scope: DomainRuleScope
-    @State private var browserID: String
-    @State private var browserProfileKey: String
-    @State private var profileID: UUID?
-    @State private var isEnabled: Bool
-
-    init(rule: DomainRule) {
-        self.rule = rule
-        _domain = State(initialValue: rule.domain)
-        _scope = State(initialValue: rule.scope)
-        _browserID = State(
-            initialValue: rule.browser.bundleIdentifier
-        )
-        _browserProfileKey = State(
-            initialValue: rule.browserProfile?.id ?? ""
-        )
-        _profileID = State(initialValue: rule.profileID)
-        _isEnabled = State(initialValue: rule.isEnabled)
-    }
-
-    private var editBrowserProfiles: [BrowserProfileChoice] {
-        store.browserProfiles(for: browserID)
-    }
-
+    @State private var newName = ""
     var body: some View {
-        Form {
-            TextField("Domain", text: $domain)
-            Picker("Scope", selection: $scope) {
-                Text("This site").tag(DomainRuleScope.exactHost)
-                Text("This site and subdomains").tag(
-                    DomainRuleScope.includeSubdomains
-                )
-            }
-            Picker("Browser", selection: $browserID) {
-                ForEach(store.externalBrowsers) { browser in
-                    Text(browser.name).tag(browser.id)
-                }
-            }
-            if editBrowserProfiles.count > 1 {
-                Picker("Browser profile", selection: $browserProfileKey) {
-                    Text("Usual window").tag("")
-                    ForEach(editBrowserProfiles) { profile in
-                        Text(profile.name).tag(profile.id)
-                    }
-                }
-            }
-            Picker("Rule set", selection: $profileID) {
-                Text("Everywhere").tag(UUID?.none)
-                ForEach(store.routingConfiguration.profiles) { profile in
-                    Text(profile.name).tag(Optional(profile.id))
-                }
-            }
-            Toggle("Enabled", isOn: $isEnabled)
-
+        VStack(alignment: .leading, spacing: 18) {
+            PageHeading(title: "Rule sets", subtitle: "Group rules for work, home, or anything else. Browsing a set does not make it active.")
             HStack {
-                Button("Cancel", role: .cancel) {
-                    dismiss()
-                }
-                Spacer()
-                Button("Save") {
-                    guard let browser = store.externalBrowsers.first(
-                        where: { $0.id == browserID }
-                    ) else {
-                        return
-                    }
-                    if store.updateRule(
-                        rule.id,
-                        domain: domain,
-                        scope: scope,
-                        browser: browser.reference,
-                        profileID: profileID,
-                        browserProfile: editBrowserProfiles.first {
-                            $0.id == browserProfileKey
-                        },
-                        isEnabled: isEnabled
-                    ) {
-                        dismiss()
-                    }
-                }
-                .buttonStyle(.glassProminent)
+                TextField("New rule set name", text: $newName).textFieldStyle(.roundedBorder)
+                Button("Create") { if store.createProfile(named: newName) != nil { newName = "" } }.disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(store.routingConfiguration.profiles) { profile in RuleSetEditRow(profile: profile) }
+                }
+            }.frame(maxHeight: 230)
+            StoreNotice()
+            HStack { Spacer(); Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.cancelAction) }
+        }.padding(28).frame(width: 540)
+    }
+}
+
+private struct RuleSetEditRow: View {
+    @Environment(BrowserStore.self) private var store
+    let profile: RoutingProfile
+    @State private var name: String
+    init(profile: RoutingProfile) { self.profile = profile; _name = State(initialValue: profile.name) }
+    var body: some View {
+        HStack {
+            TextField("Rule set name", text: $name).textFieldStyle(.roundedBorder)
+            Button("Rename") { _ = store.renameProfile(profile.id, to: name) }.disabled(name == profile.name || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Menu {
+                Button("Delete set and its rules", role: .destructive) { _ = store.deleteProfile(profile.id) }
+            } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Options for \(profile.name)")
         }
-        .padding(24)
-        .frame(width: 460)
     }
 }

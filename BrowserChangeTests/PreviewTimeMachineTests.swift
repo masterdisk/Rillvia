@@ -126,7 +126,7 @@ final class PreviewTimeMachineTests: XCTestCase {
         XCTAssertEqual(
             focused.snapshots[1].changes,
             [
-                "Started sending links through Linkpick.",
+                "Started sending links through Rillvia.",
                 "Added the Work rule set.",
                 "Selected the Work rule set.",
             ]
