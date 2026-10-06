@@ -26,6 +26,7 @@ final class BrowserStore {
     var selectedID: String?
     var workspaceDestination: WorkspaceDestination = .overview
     let workspace = WorkspaceModel()
+    let shortcuts: KeyboardShortcutStore
     var showHall = false
     var showDiagnostics = false
     var showTimeMachine = false
@@ -121,7 +122,8 @@ final class BrowserStore {
         self.init(services: BrowserChangeServices(environment: environment))
     }
 
-    init(services: BrowserChangeServices) {
+    init(services: BrowserChangeServices, shortcuts: KeyboardShortcutStore? = nil) {
+        self.shortcuts = shortcuts ?? KeyboardShortcutStore(defaults: AppPreferences.defaults)
         self.environment = services.environment
         self.browserChange = services.browserChange
         self.transactionCoordinator = services.transactionCoordinator

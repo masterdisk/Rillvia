@@ -1,6 +1,6 @@
 import Foundation
 
-enum BrowserLeasePreset: String, CaseIterable, Identifiable, Sendable {
+enum BrowserLeasePreset: String, CaseIterable, Identifiable, Codable, Sendable {
     case fifteenMinutes
     case thirtyMinutes
     case sixtyMinutes

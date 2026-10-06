@@ -363,6 +363,106 @@ final class BrowserChangeUITests: XCTestCase {
         screenshot(app, "rillvia-browser-hall")
     }
 
+    func testMenuCanSwitchRuleSetsWithoutOpeningTheWorkspace() {
+        let app = designApp()
+        app.typeKey("w", modifierFlags: .command)
+        app.statusItems["Rillvia"].click()
+        let picker = app.descendants(matching: .any).matching(identifier: "menu-rule-set-picker").firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+        picker.click()
+        app.menuItems["Personal"].click()
+        XCTAssertEqual(picker.value as? String, "Personal")
+        picker.click()
+        app.menuItems["Shared rules only"].click()
+        XCTAssertEqual(picker.value as? String, "Shared rules only")
+        XCTAssertFalse(app.windows["Rillvia"].exists)
+        let panel = app.dialogs.containing(.button, identifier: "menu-open-app").firstMatch
+        let attachment = XCTAttachment(screenshot: panel.screenshot())
+        attachment.name = "rillvia-menu-rule-set-picker"; attachment.lifetime = .keepAlways; add(attachment)
+    }
+
+    private func recordBrowserShortcut(in app: XCUIApplication, scope: String = "Everywhere") {
+        app.buttons["nav-settings"].click()
+        app.buttons["add-keyboard-shortcut"].click()
+        XCTAssertTrue(app.buttons["record-shortcut"].waitForExistence(timeout: 3))
+        app.buttons["record-shortcut"].click()
+        app.sheets.firstMatch.typeKey("c", modifierFlags: [.control, .option, .shift])
+        screenshot(app, "rillvia-shortcut-after-recording")
+        XCTAssertTrue(app.buttons["save-keyboard-shortcut"].isEnabled, app.sheets.firstMatch.debugDescription)
+        app.radioButtons[scope].click()
+        screenshot(app, "rillvia-shortcut-builder")
+        app.buttons["save-keyboard-shortcut"].click()
+        XCTAssertTrue(app.buttons["record-shortcut"].waitForNonExistence(timeout: 3))
+    }
+
+    func testGlobalShortcutWorksWithAnotherAppActiveAndTheWindowClosed() {
+        let app = designApp()
+        recordBrowserShortcut(in: app)
+        screenshot(app, "rillvia-shortcut-settings")
+        app.typeKey("w", modifierFlags: .command)
+        let calculator = XCUIApplication(bundleIdentifier: "com.apple.calculator")
+        calculator.launch()
+        defer { calculator.terminate() }
+        XCTAssertTrue(calculator.windows.firstMatch.waitForExistence(timeout: 5))
+        calculator.windows.firstMatch.typeKey("c", modifierFlags: [.control, .option, .shift])
+        XCTAssertFalse(app.windows["Rillvia"].exists)
+        app.statusItems["Rillvia"].click()
+        let browser = app.staticTexts["menu-other-links-browser"]
+        XCTAssertTrue(browser.waitForExistence(timeout: 3))
+        XCTAssertEqual(browser.value as? String, "Google Chrome")
+    }
+
+    func testAppScopedShortcutDoesNotRunOutsideRillviaAndDeletionCanBeUndone() {
+        let app = designApp()
+        recordBrowserShortcut(in: app, scope: "In Rillvia")
+        let calculator = XCUIApplication(bundleIdentifier: "com.apple.calculator")
+        calculator.launch()
+        defer { calculator.terminate() }
+        XCTAssertTrue(calculator.windows.firstMatch.waitForExistence(timeout: 5))
+        calculator.windows.firstMatch.typeKey("c", modifierFlags: [.control, .option, .shift])
+        app.activate()
+        app.buttons["nav-overview"].click()
+        XCTAssertEqual(app.buttons["fallback-picker"].value as? String, "Safari")
+        app.windows.firstMatch.typeKey("c", modifierFlags: [.control, .option, .shift])
+        XCTAssertEqual(app.buttons["fallback-picker"].value as? String, "Google Chrome")
+        app.buttons["nav-settings"].click()
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "delete-shortcut-")).firstMatch.click()
+        XCTAssertTrue(app.staticTexts["keyboard-shortcuts-empty"].exists)
+        app.links["undo-shortcut-deletion"].click()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "edit-shortcut-")).firstMatch.exists)
+    }
+
+    func testShortcutRecorderRejectsReservedAndDuplicateKeysAndCancelKeepsActions() {
+        let app = designApp()
+        recordBrowserShortcut(in: app)
+        app.buttons["add-keyboard-shortcut"].click()
+        app.buttons["record-shortcut"].click()
+        app.sheets.firstMatch.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["shortcut-validation-error"].exists)
+        XCTAssertFalse(app.buttons["save-keyboard-shortcut"].isEnabled)
+        app.buttons["record-shortcut"].click()
+        app.sheets.firstMatch.typeKey("c", modifierFlags: [.control, .option, .shift])
+        XCTAssertFalse(app.buttons["save-keyboard-shortcut"].isEnabled)
+        app.buttons["cancel-keyboard-shortcut"].click()
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "edit-shortcut-")).count, 1)
+    }
+
+    func testShortcutBuilderCanChooseAndRunASpecificRuleSet() {
+        let app = designApp()
+        app.buttons["nav-settings"].click()
+        app.buttons["add-keyboard-shortcut"].click()
+        app.buttons["record-shortcut"].click()
+        app.sheets.firstMatch.typeKey("p", modifierFlags: [.control, .option])
+        app.buttons["shortcut-action-picker"].click()
+        app.buttons["selector-choice-ruleSet"].click()
+        app.buttons["shortcut-rule-set-picker"].click()
+        app.buttons.matching(NSPredicate(format: "label == %@", "Personal")).firstMatch.click()
+        app.buttons["save-keyboard-shortcut"].click()
+        app.typeKey("p", modifierFlags: [.control, .option])
+        app.buttons["nav-overview"].click()
+        XCTAssertEqual(app.buttons["active-rule-set-picker"].value as? String, "Personal")
+    }
+
     func testIncomingURLLaunchRemainsWindowless() {
         let app = launch(["--ui-testing-routing-fixture", "--ui-testing-incoming-fallback"])
         XCTAssertFalse(app.windows.firstMatch.waitForExistence(timeout: 3))

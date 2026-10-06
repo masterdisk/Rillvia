@@ -11,7 +11,7 @@ struct AppSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(alignment: .top, spacing: 16) {
-                    PageHeading(title: "Settings", subtitle: "Appearance, startup, and help.", identifier: "settings-title", size: 32)
+                    PageHeading(title: "Settings", subtitle: "Appearance, startup, shortcuts, and help.", identifier: "settings-title", size: 32)
                     VStack(alignment: .trailing, spacing: 8) {
                         RoutingStatus()
                         Button(store.isSmartRoutingActive ? "Turn off rules" : "Turn on rules") {
@@ -38,6 +38,9 @@ struct AppSettingsView: View {
                     if !isTesting, SMAppService.mainApp.status == .requiresApproval {
                         Button("Open Login Items settings") { SMAppService.openSystemSettingsLoginItems() }
                     }
+                }
+                settingsSection("Keyboard shortcuts") {
+                    KeyboardShortcutSettings()
                 }
                 settingsSection("Apple Shortcuts") {
                     Toggle(isOn: Binding(get: { store.allowsAutomationLeases }, set: { _ = store.setAutomationLeasesAllowed($0) })) {
@@ -110,6 +113,7 @@ struct AppSettingsView: View {
 }
 
 struct KeyboardShortcutsView: View {
+    @Environment(BrowserStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     private let shortcuts: [(String, String)] = [
         ("Overview", "⌘1"), ("Preview a link", "⌘2"), ("Rules", "⌘3"), ("Browsers", "⌘4"), ("Settings", "⌘,"),
@@ -121,14 +125,33 @@ struct KeyboardShortcutsView: View {
     ]
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            PageHeading(title: "Keyboard shortcuts", subtitle: "Available while Rillvia is active.", identifier: "keyboard-shortcuts-title")
+            PageHeading(title: "Keyboard shortcuts", subtitle: "Built-in keys work while Rillvia is active. Add your own in Settings.", identifier: "keyboard-shortcuts-title")
             ScrollView {
                 VStack(spacing: 11) {
+                    if !store.shortcuts.bindings.isEmpty {
+                        Text("Your shortcuts").font(.headline).frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(store.shortcuts.bindings) { binding in
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(ShortcutExecutor.title(binding.action, in: store)).fixedSize(horizontal: false, vertical: true)
+                                    Text(binding.isEnabled ? binding.scope.title : "Off").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(binding.chord?.display ?? "No keys").font(.system(.body, design: .monospaced)).foregroundStyle(.secondary).fixedSize()
+                            }
+                        }
+                        Divider()
+                        Text("Built-in keys").font(.headline).frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     ForEach(shortcuts, id: \.0) { title, keys in HStack { Text(title); Spacer(); Text(keys).font(.system(.body, design: .monospaced)).foregroundStyle(.secondary) } }
                 }
             }.frame(maxHeight: 410)
             Text("Inside text fields, ⌘Z undoes typing. Arrow keys move through pickers; Return chooses and Esc cancels.").font(.callout).foregroundStyle(.secondary)
-            HStack { Spacer(); Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.cancelAction) }
+            HStack {
+                Button("Customize shortcuts") { dismiss(); store.navigate(to: .settings) }.buttonStyle(.link)
+                Spacer()
+                Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.cancelAction)
+            }
         }.padding(28).frame(width: 520)
     }
 }

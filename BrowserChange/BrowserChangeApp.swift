@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shouldPresentMainWindowWhenConnected = false
     private var isPreparedForIncomingURLs = false
     private var isPreparingForIncomingURLs = false
+    private var shortcutController: KeyboardShortcutController?
 
     override init() {
         self.incomingURLQueue = IncomingURLQueue()
@@ -192,6 +193,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) {
         self.store = store
         self.openMainWindow = openMainWindow
+        if shortcutController == nil, NSClassFromString("XCTestCase") == nil {
+            shortcutController = KeyboardShortcutController(store: store) { [weak self] in
+                self?.userWantsMainWindow()
+                self?.openMainWindow?()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
         presentMainWindowIfPossible()
         incomingURLQueue.attach { [weak store] url in
             guard let store else {
@@ -217,6 +225,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isPreparingForIncomingURLs = false
         await incomingURLQueue.drain()
     }
+
+    func applicationWillTerminate(_ notification: Notification) { shortcutController?.stop() }
 
     private func presentMainWindowIfPossible() {
         guard shouldPresentMainWindowWhenConnected,

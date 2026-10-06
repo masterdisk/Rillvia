@@ -182,6 +182,7 @@ struct WideSelector: View {
     let label: String
     let selectedID: String
     let choices: [SelectorChoice]
+    var placeholder = "Choose a browser"
     @Binding var isPresented: Bool
     let choose: (String) -> Void
     @State private var highlighted = 0
@@ -191,7 +192,7 @@ struct WideSelector: View {
         Button { isPresented.toggle() } label: {
             HStack(spacing: 12) {
                 choiceIcon(current)
-                Text(current?.title ?? "Choose a browser").font(.system(size: 15)).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                Text(current?.title ?? placeholder).font(.system(size: 15)).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
                 Spacer(minLength: 10)
                 Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
             }.padding(.horizontal, 12).padding(.vertical, 9).frame(minHeight: 42).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())

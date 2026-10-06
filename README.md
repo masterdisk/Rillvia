@@ -8,6 +8,8 @@ Choose a browser for other links, add rules for individual domains, and keep sep
 
 The native interface includes Overview, Preview a link, Rules, Browsers, and Settings. Browser selection and rule-set browsing stay separate from changes to how links open. Rule edits save explicitly; deleting a rule or set offers Undo. The tour is available again in Settings.
 
+Switch the active rule set directly from the menu bar. The picker lists your enabled sets and Shared rules only; Manage rule sets opens the workspace.
+
 ## Keyboard shortcuts
 
 | Action | Shortcut |
@@ -26,6 +28,12 @@ The native interface includes Overview, Preview a link, Rules, Browsers, and Set
 | Diagnostics / Configuration history | ⌥⌘U / ⌥⌘T |
 
 These keys work while Rillvia is active. Native text editing keeps its usual Undo behavior. Pickers support arrows, Return, and Esc. Apple Shortcuts automation has a separate permission in Settings.
+
+Add your own keys in **Settings → Keyboard shortcuts → Add shortcut**. Record a combination, choose an action, and select its browser, duration, or rule set. **Everywhere** works while another app is active and Rillvia's window is closed, as long as Rillvia is running. Choose **In Rillvia** to keep a shortcut inside the app. Your shortcuts pause while the editor is open.
+
+Actions include choosing a browser for links, starting or ending a temporary browser, switching to a specific rule set, cycling through sets, opening Rillvia, and previewing a copied web link. With rules configured, the browser action updates the saved **Other links** choice. In direct mode, it changes the macOS default browser. Switching sets preserves your shared rules and unfinished rule drafts.
+
+Saved shortcuts can be edited, disabled, or deleted with Undo. The editor rejects ordinary typing, reserved app commands, and duplicate keys. If macOS cannot register a global shortcut, choose another combination. Custom keyboard actions do not need the Apple Shortcuts automation permission.
 
 ## How links open
 
@@ -49,7 +57,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
 
 UI tests use temporary storage and fake browser handlers and launchers. To inspect the sample configuration without changing your browser setup, launch a Debug build with `--ui-testing --ui-testing-design-fixture`.
 
-For a standalone capture of the actual menu component, add `--ui-testing-menu-preview`. This review mode is disabled in Release. Final check results and the Xcode UI-runner limitation are recorded in `design-qa.md`.
+For a standalone capture of the actual menu component, add `--ui-testing-menu-preview`. This review mode is disabled in Release. Final check results, native screenshots, and verification boundaries are recorded in `design-qa.md`.
 
 ## Design and branding
 

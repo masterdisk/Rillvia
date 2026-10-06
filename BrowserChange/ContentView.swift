@@ -70,7 +70,7 @@ struct ContentView: View {
             TemporaryBrowserSheet().environment(store)
         }
         .sheet(isPresented: $workspace.showKeyboardShortcuts) {
-            KeyboardShortcutsView()
+            KeyboardShortcutsView().environment(store)
         }
         .sheet(isPresented: $workspace.showTutorial) {
             IntroView { store.workspace.showTutorial = false }.environment(store)

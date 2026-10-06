@@ -52,8 +52,25 @@ struct MenuPanel: View {
                         HStack(spacing: 12) {
                             Text("Active rule set").foregroundStyle(.secondary).frame(width: 118, alignment: .leading)
                             Image(systemName: "square.3.layers.3d").foregroundStyle(.secondary).frame(width: 22)
-                            Text(store.routingConfiguration.profiles.first { $0.id == store.routingConfiguration.activeProfileID }?.name ?? "Shared rules only").fontWeight(.medium).fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 0)
+                            Menu {
+                                ruleSetChoice("Shared rules only", id: nil)
+                                ForEach(store.routingConfiguration.profiles.filter(\.isEnabled)) { profile in
+                                    ruleSetChoice(profile.name, id: profile.id)
+                                }
+                                Divider()
+                                Button("Manage rule sets") {
+                                    presentMainWindow()
+                                    store.workspace.showRuleSets = true
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(activeRuleSetName).fontWeight(.medium).fixedSize(horizontal: false, vertical: true)
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                                }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                            }.menuStyle(.borderlessButton).menuIndicator(.hidden)
+                                .accessibilityLabel("Active rule set").accessibilityValue(activeRuleSetName)
+                                .accessibilityIdentifier("menu-rule-set-picker").disabled(store.isSwitching)
                         }
                     }.font(.callout)
 
@@ -106,6 +123,9 @@ struct MenuPanel: View {
                         }.buttonStyle(.link).accessibilityIdentifier("menu-open-clipboard-link")
                     }
                     StoreNotice()
+                    if let message = store.shortcuts.lastMessage {
+                        Text(message).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 // Scroll content must keep the panel's width when native controls update their intrinsic size.
                 .frame(width: panelWidth - contentInset * 2, alignment: .leading)
@@ -116,6 +136,7 @@ struct MenuPanel: View {
                 Button("Open Rillvia", systemImage: "macwindow") { presentMainWindow() }.buttonStyle(.glass).controlSize(.large).accessibilityIdentifier("menu-open-app")
                 Spacer(minLength: 0)
                 Menu {
+                    Button("Customize shortcuts") { presentMainWindow(); store.navigate(to: .settings) }
                     Button("Keyboard shortcuts") { presentMainWindow(); store.workspace.showKeyboardShortcuts = true }
                     Button("Diagnostics") { presentMainWindow(); store.openDiagnostics() }
                     Divider()
@@ -133,6 +154,13 @@ struct MenuPanel: View {
             }
     }
     private var chosen: InstalledBrowser? { store.externalBrowsers.first { $0.id == browserID } }
+    private var activeRuleSetName: String { store.routingConfiguration.profiles.first { $0.id == store.routingConfiguration.activeProfileID }?.name ?? "Shared rules only" }
+    @ViewBuilder private func ruleSetChoice(_ name: String, id: UUID?) -> some View {
+        Button { _ = store.selectProfile(id) } label: {
+            if store.routingConfiguration.activeProfileID == id { Label(name, systemImage: "checkmark") }
+            else { Text(name) }
+        }
+    }
     private func presentMainWindow() {
         delegate.userWantsMainWindow()
         openWindow(id: "main")
