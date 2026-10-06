@@ -19,7 +19,7 @@ enum BrowserLeasePreset: String, CaseIterable, Identifiable, Sendable {
         case .sixtyMinutes:
             "60 minutes"
         case .untilEnded:
-            "Until ended"
+            "Until I stop"
         }
     }
 
@@ -39,18 +39,18 @@ enum BrowserLeasePreset: String, CaseIterable, Identifiable, Sendable {
     func actionTitle(browserName: String) -> String {
         switch self {
         case .untilEnded:
-            "Borrow \(browserName) until ended"
+            "Use \(browserName) until you stop"
         case .fifteenMinutes, .thirtyMinutes, .sixtyMinutes:
-            "Borrow \(browserName) for \(title.lowercased())"
+            "Use \(browserName) for \(title.lowercased())"
         }
     }
 
     func activeDescription(browserName: String) -> String {
         switch self {
         case .untilEnded:
-            "\(browserName) is borrowed until ended"
+            "Using \(browserName) until you stop"
         case .fifteenMinutes, .thirtyMinutes, .sixtyMinutes:
-            "\(browserName) is borrowed for \(title.lowercased())"
+            "Using \(browserName) for \(title.lowercased())"
         }
     }
 }
@@ -81,7 +81,7 @@ enum BrowserLeaseFormatting {
         at date: Date
     ) -> String {
         guard let expiresAt = lease.expiresAt else {
-            return "Until ended"
+            return "Until you stop"
         }
         let totalSeconds = max(
             0,

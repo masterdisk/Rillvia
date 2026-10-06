@@ -7,6 +7,7 @@ struct AppEnvironment {
     var urlLauncher: any ExternalURLLaunching
     var now: () -> Date
     var leaseScheduler: any BrowserLeaseScheduling
+    var browserProfiles: any BrowserProfileReading
 
     @MainActor
     init(
@@ -15,7 +16,8 @@ struct AppEnvironment {
         stateRepository: StateRepository,
         urlLauncher: (any ExternalURLLaunching)? = nil,
         now: @escaping () -> Date = Date.init,
-        leaseScheduler: (any BrowserLeaseScheduling)? = nil
+        leaseScheduler: (any BrowserLeaseScheduling)? = nil,
+        browserProfiles: (any BrowserProfileReading)? = nil
     ) {
         self.browserCatalog = browserCatalog
         self.systemBrowserHandler = systemBrowserHandler
@@ -24,6 +26,8 @@ struct AppEnvironment {
         self.now = now
         self.leaseScheduler = leaseScheduler
             ?? LeaseScheduler(now: now)
+        self.browserProfiles = browserProfiles
+            ?? EmptyBrowserProfileReader()
     }
 
     @MainActor
@@ -33,7 +37,8 @@ struct AppEnvironment {
             browserCatalog: WorkspaceBrowserCatalog(),
             systemBrowserHandler: systemHandler,
             stateRepository: StateRepository(),
-            urlLauncher: systemHandler
+            urlLauncher: systemHandler,
+            browserProfiles: SystemBrowserProfileReader()
         )
     }
 

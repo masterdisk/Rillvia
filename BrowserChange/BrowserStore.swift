@@ -155,7 +155,7 @@ final class BrowserStore {
         let info = Bundle.main.infoDictionary
         let appName = info?["CFBundleDisplayName"] as? String
             ?? info?["CFBundleName"] as? String
-            ?? "BrowserChange"
+            ?? "Linkpick"
         let appVersion = info?["CFBundleShortVersionString"] as? String
             ?? "Unknown"
         let buildVersion = info?["CFBundleVersion"] as? String
@@ -199,32 +199,32 @@ final class BrowserStore {
     var routingModeTitle: String {
         switch routingState {
         case .direct:
-            "Direct"
+            "Usual browser"
         case .enabling:
-            "Turning on Smart Routing"
+            "Turning on link sending"
         case .smartActive:
-            "Smart Routing"
+            "Sending links"
         case .smartSuspended:
-            "Smart Routing suspended"
+            "Link sending paused"
         case .disabling:
-            "Turning off Smart Routing"
+            "Turning off link sending"
         case .degraded:
-            "Routing needs attention"
+            "Links need attention"
         }
     }
 
     var routingModeDetail: String {
         switch routingState {
         case .direct:
-            "Links open directly in the current system default browser."
+            "Links open in the usual browser."
         case .enabling(let fallback):
-            "Waiting for macOS to make BrowserChange the web-link handler. \(name(for: fallback)) will remain the external fallback."
+            "Waiting for macOS to let Linkpick open web links. \(name(for: fallback)) stays the browser used when no rule matches."
         case .smartActive(let fallback):
-            "BrowserChange forwards web links immediately to \(name(for: fallback))."
+            "Links open in \(name(for: fallback)), unless a rule says otherwise."
         case .smartSuspended(let fallback):
-            "The web-link handlers changed outside BrowserChange. Smart Routing will not reclaim them; \(name(for: fallback)) remains configured as the fallback."
+            "macOS changed the web-link handler. Linkpick will not take it back. \(name(for: fallback)) is still the browser used when no rule matches."
         case .disabling(let fallback):
-            "Waiting for macOS to make \(name(for: fallback)) the Direct default."
+            "Waiting for macOS to make \(name(for: fallback)) the usual browser."
         case .degraded(let issue):
             smartRoutingMessage(for: issue)
         }
@@ -244,10 +244,10 @@ final class BrowserStore {
 
     var defaultBrowserName: String {
         if hasSplitHandlers && !isSmartRoutingConfigured {
-            return "Split web handlers"
+            return "HTTP and HTTPS differ"
         }
         return switchable.first { $0.id == defaultBundleID }?.name
-            ?? "BrowserChange"
+            ?? "Linkpick"
     }
 
     var selectedBrowserForRepair: InstalledBrowser? {
@@ -266,8 +266,25 @@ final class BrowserStore {
         if let id = defaultBundleID, let icon = icons[id] {
             return icon
         }
-        return NSImage(systemSymbolName: "globe", accessibilityDescription: "BrowserChange")
+        return NSImage(systemSymbolName: "globe", accessibilityDescription: "Linkpick")
             ?? NSImage(size: NSSize(width: 18, height: 18))
+    }
+
+    func browserProfiles(for bundleIdentifier: String) -> [BrowserProfileChoice] {
+        environment.browserProfiles.profiles(for: bundleIdentifier)
+    }
+
+    func supportsPrivateWindow(_ bundleIdentifier: String) -> Bool {
+        environment.browserProfiles.supportsPrivateWindow(bundleIdentifier)
+    }
+
+    func browserChoiceLabel(
+        _ browser: BrowserReference,
+        profile: BrowserProfileChoice? = nil
+    ) -> String {
+        let name = displayName(for: browser)
+        guard let profile else { return name }
+        return "\(name) · \(profile.name)"
     }
 
     func icon(for browser: InstalledBrowser) -> NSImage {
@@ -306,7 +323,7 @@ final class BrowserStore {
             )
         } catch {
             timeMachineModel = PreviewTimeMachineModel(snapshots: [])
-            message = "BrowserChange could not read configuration history. Reopen the app to recover safely."
+            message = "Linkpick could not read its history. Reopen the app and try again."
         }
         showTimeMachine = true
     }
@@ -402,7 +419,7 @@ final class BrowserStore {
     func enableSmartRouting() async {
         guard !isSwitching else { return }
         guard !isSmartRoutingConfigured else {
-            message = "Smart Routing is already configured."
+            message = "Linkpick is already sending links."
             return
         }
 
@@ -416,7 +433,7 @@ final class BrowserStore {
 
         routingState = .enabling(fallback)
         transactionStatus = .switching
-        message = "Waiting for macOS to confirm Smart Routing ownership."
+        message = "Waiting for macOS to let Linkpick open web links."
         let outcome = await smartRoutingCoordinator.enable(
             fallback: fallback
         )
@@ -425,7 +442,7 @@ final class BrowserStore {
         switch outcome {
         case .succeeded:
             transactionStatus = .idle
-            message = "Smart Routing is on with \(name(for: fallback)) as its fallback."
+            message = "Links open in \(name(for: fallback)), unless a rule says otherwise."
             onRoutingAvailabilityChanged?()
         case .failed(let issue):
             transactionStatus = .idle
@@ -447,14 +464,14 @@ final class BrowserStore {
 
         routingState = .disabling(fallback)
         transactionStatus = .switching
-        message = "Turning Smart Routing off and restoring the Direct default."
+        message = "Stopping. \(name(for: fallback)) will be the usual browser."
         let outcome = await smartRoutingCoordinator.disable()
         reload()
 
         switch outcome {
         case .succeeded:
             transactionStatus = .idle
-            message = "Smart Routing is off. \(name(for: fallback)) is now the Direct default."
+            message = "Stopped. \(name(for: fallback)) is the usual browser."
         case .failed(let issue):
             transactionStatus = .idle
             message = smartRoutingMessage(for: issue)
@@ -471,7 +488,7 @@ final class BrowserStore {
         for preset: BrowserLeasePreset
     ) -> Bool {
         guard isSmartRoutingActive else {
-            message = "Borrow is available only while Smart Routing is active."
+            message = "You can use another browser for a while only while Linkpick is sending links."
             return false
         }
         guard externalBrowsers.contains(where: { $0.id == browser.id }) else {
@@ -487,7 +504,7 @@ final class BrowserStore {
         reload()
         switch outcome {
         case .succeeded:
-            message = "\(preset.activeDescription(browserName: browser.name)). Rules and the \(defaultBrowserName) fallback are unchanged."
+            message = "\(preset.activeDescription(browserName: browser.name)). Rules stay as they are."
             return true
         case .failed(let issue):
             message = browserLeaseMessage(for: issue)
@@ -516,7 +533,7 @@ final class BrowserStore {
         switch outcome {
         case .succeeded:
             if let lease = activeBrowserLease {
-                message = "Restored the lease for \(name(for: lease.browser))."
+                message = "Using \(name(for: lease.browser)) again."
             } else {
                 message = leaseEndedMessage
             }
@@ -548,7 +565,7 @@ final class BrowserStore {
             return false
         } catch {
             reload()
-            message = "BrowserChange could not save the automation setting."
+            message = "Linkpick could not save the Shortcuts setting."
             return false
         }
     }
@@ -572,10 +589,10 @@ final class BrowserStore {
             }
             return .consumed
         case .rejected(.unsupportedURL):
-            message = "BrowserChange only routes HTTP and HTTPS links."
+            message = "Linkpick only opens HTTP and HTTPS links."
             return .consumed
         case .rejected(.duplicateDispatch):
-            message = "BrowserChange stopped a repeated link dispatch."
+            message = "Linkpick stopped a repeated link."
             return .consumed
         case .rejected(.selfTarget):
             message = smartRoutingMessage(for: .selfFallback)
@@ -586,7 +603,7 @@ final class BrowserStore {
         case .blocked(.launchFailed):
             let fallbackName = smartFallbackBrowser?.name
                 ?? defaultBrowserName
-            message = "\(fallbackName) could not open the link. Reinstall it or choose another Smart Routing fallback."
+            message = "\(fallbackName) could not open the link. Reinstall it or choose another browser."
             return .retryLater
         case .blocked(.missingFallback):
             message = smartRoutingMessage(for: .missingFallback)
@@ -643,13 +660,15 @@ final class BrowserStore {
         _ item: AirlockItem,
         in browser: BrowserReference,
         always scope: DomainRuleScope? = nil,
-        profileID: UUID? = nil
+        profileID: UUID? = nil,
+        launch: BrowserLaunchMode = .standard
     ) async -> RoutingOutcome {
         await openAirlockFromChooser(
             item,
             in: browser,
             always: scope,
-            profileID: profileID
+            profileID: profileID,
+            launch: launch
         ).routingOutcome
     }
 
@@ -657,14 +676,16 @@ final class BrowserStore {
         _ item: AirlockItem,
         in browser: BrowserReference,
         always scope: DomainRuleScope? = nil,
-        profileID: UUID? = nil
+        profileID: UUID? = nil,
+        launch: BrowserLaunchMode = .standard
     ) async -> AirlockChooserResult {
         reload(reconcilingLease: true)
         let outcome = await routingCoordinator.route(
             item.normalized.originalURL,
             configuration: smartRoutingCoordinator.configuration,
             explicitTarget: browser,
-            availableTargets: availableBrowserReferences
+            availableTargets: availableBrowserReferences,
+            explicitLaunch: launch
         )
         guard case .opened(let openedBrowser) = outcome,
               openedBrowser == browser else {
@@ -692,6 +713,7 @@ final class BrowserStore {
                 scope: scope,
                 browser: browser,
                 profileID: profileID,
+                browserProfile: savedBrowserProfile(from: launch),
                 source: .airlock
         ) != nil else {
             let errorMessage = airlockTeachingFailureMessage(
@@ -715,12 +737,22 @@ final class BrowserStore {
         )
     }
 
+    private func savedBrowserProfile(
+        from launch: BrowserLaunchMode
+    ) -> BrowserProfileChoice? {
+        if case .profile(let profile) = launch {
+            return profile
+        }
+        return nil
+    }
+
     @discardableResult
     func createRule(
         domain: String,
         scope: DomainRuleScope = .exactHost,
         browser: BrowserReference,
         profileID: UUID? = nil,
+        browserProfile: BrowserProfileChoice? = nil,
         source: ConfigurationSource = .manual
     ) -> DomainRule? {
         var configuration = routingConfiguration
@@ -730,6 +762,7 @@ final class BrowserStore {
                 scope: scope,
                 browser: browser,
                 profileID: profileID,
+                browserProfile: browserProfile,
                 source: source,
                 in: &configuration
             )
@@ -749,6 +782,7 @@ final class BrowserStore {
         scope: DomainRuleScope,
         browser: BrowserReference,
         profileID: UUID?,
+        browserProfile: BrowserProfileChoice? = nil,
         isEnabled: Bool
     ) -> Bool {
         var configuration = routingConfiguration
@@ -759,6 +793,7 @@ final class BrowserStore {
                 scope: scope,
                 browser: browser,
                 profileID: profileID,
+                browserProfile: browserProfile,
                 isEnabled: isEnabled,
                 in: &configuration
             )
@@ -815,7 +850,7 @@ final class BrowserStore {
                 in: &configuration
             )
             guard persist(configuration) else { return nil }
-            message = "Created the \(profile.name) profile."
+            message = "Created the \(profile.name) rule set."
             return profile
         } catch {
             message = configurationMessage(for: error)
@@ -833,7 +868,7 @@ final class BrowserStore {
                 in: &configuration
             )
             guard persist(configuration) else { return false }
-            message = "Renamed the profile."
+            message = "Renamed the rule set."
             return true
         } catch {
             message = configurationMessage(for: error)
@@ -851,8 +886,8 @@ final class BrowserStore {
             )
             guard persist(configuration) else { return false }
             message = profileID == nil
-                ? "Using global rules only."
-                : "Selected the routing profile."
+                ? "Using rules that apply everywhere."
+                : "Selected the rule set."
             return true
         } catch {
             message = configurationMessage(for: error)
@@ -869,7 +904,7 @@ final class BrowserStore {
                 in: &configuration
             )
             guard persist(configuration) else { return false }
-            message = "Deleted the profile and its rules."
+            message = "Deleted the rule set and its rules."
             return true
         } catch {
             message = configurationMessage(for: error)
@@ -880,7 +915,7 @@ final class BrowserStore {
     func repairSelectedHandlers() async {
         guard !isSwitching else { return }
         guard !isSmartRoutingConfigured else {
-            message = "Turn Smart Routing off before repairing Direct handlers."
+            message = "Stop sending links before fixing HTTP and HTTPS."
             return
         }
         guard let browser = selectedBrowserForRepair else {
@@ -984,7 +1019,7 @@ final class BrowserStore {
         reload()
         switch outcome {
         case .succeeded:
-            message = "\(browser.name) is now the Smart Routing fallback."
+            message = "\(browser.name) is now the browser used when no rule matches."
             onRoutingAvailabilityChanged?()
         case .failed(let issue):
             message = smartRoutingMessage(for: issue)
@@ -1038,11 +1073,11 @@ final class BrowserStore {
         case .opened(let browser):
             message = "Opened the link in \(name(for: browser))."
         case .rejected(.duplicateDispatch):
-            message = "BrowserChange stopped a repeated link dispatch."
+            message = "Linkpick stopped a repeated link."
         case .rejected(.unsupportedURL):
-            message = "BrowserChange only routes HTTP and HTTPS links."
+            message = "Linkpick only opens HTTP and HTTPS links."
         case .rejected(.selfTarget):
-            message = "BrowserChange cannot open a link in itself."
+            message = "Linkpick cannot open a link in itself."
         case .rejected(.explicitTargetUnavailable):
             message = "The selected browser is no longer available. Reinstall it or choose another browser."
         case .rejected:
@@ -1059,17 +1094,17 @@ final class BrowserStore {
     private func configurationMessage(for error: Error) -> String {
         switch error as? RoutingConfigurationIssue {
         case .selfTarget:
-            "BrowserChange cannot be a routing target."
+            "Linkpick cannot be the browser a rule opens."
         case .invalidDomain:
             "Enter a valid domain."
         case .invalidName:
-            "Enter a profile name."
+            "Enter a rule set name."
         case .missingProfile:
-            "That profile is no longer available."
+            "That rule set is no longer available."
         case .missingRule:
             "That rule is no longer available."
         case nil:
-            "BrowserChange could not update the routing configuration."
+            "Linkpick could not save that change."
         }
     }
 
@@ -1077,27 +1112,27 @@ final class BrowserStore {
         browser: BrowserReference
     ) -> String {
         let prefix = "The link opened in \(name(for: browser)), but the “Always open” rule was not saved."
-        if message == "That profile is no longer available." {
-            return "\(prefix) Choose Global or another profile, then try again."
+        if message == "That rule set is no longer available." {
+            return "\(prefix) Choose Everywhere or another rule set, then try again."
         }
         if message == "Enter a valid domain." {
             return "\(prefix) Check the domain, then try again."
         }
-        return "\(prefix) Reopen BrowserChange, then try again."
+        return "\(prefix) Reopen Linkpick, then try again."
     }
 
     private var routingUnavailableMessage: String {
         switch routingState {
         case .smartSuspended:
-            "Smart Routing is suspended because the web-link handlers changed outside BrowserChange."
+            "macOS changed the web-link handler. Linkpick will not take it back."
         case .degraded(let issue):
             smartRoutingMessage(for: issue)
         case .direct:
-            "Smart Routing is off. Turn it on before routing links through BrowserChange."
+            "Linkpick is not sending links. Turn that on before rules can open links."
         case .enabling, .disabling:
-            "BrowserChange is still completing the routing mode change."
+            "Linkpick is still changing how links open."
         case .smartActive:
-            "Smart Routing is temporarily unavailable."
+            "Linkpick cannot send links right now."
         }
     }
 
@@ -1106,28 +1141,28 @@ final class BrowserStore {
     ) -> String {
         switch issue {
         case .missingFallback:
-            "Smart Routing needs an installed external fallback browser."
+            "Choose an installed browser for sites with no rule."
         case .selfFallback:
-            "BrowserChange cannot be its own external fallback."
+            "Linkpick cannot be the browser used when no rule matches."
         case .fallbackUnavailable:
-            "The Smart Routing fallback is not installed. Reinstall it or choose another browser."
+            "That browser is not installed. Reinstall it or choose another."
         case .smartRoutingNotEnabled:
-            "Smart Routing is not enabled."
+            "Linkpick is not sending links."
         case .smartRoutingAlreadyEnabled:
-            "Smart Routing is already configured."
+            "Linkpick is already sending links."
         case .transitionCancelled:
-            "The routing mode change was cancelled."
+            "That change was cancelled."
         case .handlerTransitionInProgress:
-            "BrowserChange is still completing a web-link handler change."
+            "Linkpick is still changing how links open."
         case .configurationPersistenceFailed:
-            "BrowserChange could not save its routing configuration. Reopen the app to recover safely."
+            "Linkpick could not save this. Reopen the app and try again."
         case .handlerTransaction(let issue):
             transactionMessage(for: issue)
         }
     }
 
     private var leaseEndedMessage: String {
-        "The browser lease ended. Rules and the \(defaultBrowserName) fallback are active again."
+        "The temporary browser ended. Rules and \(defaultBrowserName) are in use again."
     }
 
     private func browserLeaseMessage(
@@ -1135,19 +1170,19 @@ final class BrowserStore {
     ) -> String {
         switch issue {
         case .smartRoutingUnavailable:
-            "Borrow is available only while Smart Routing is active."
+            "You can use another browser for a while only while Linkpick is sending links."
         case .selfTarget:
-            "BrowserChange cannot be a lease target."
+            "Linkpick cannot be the temporary browser."
         case .targetUnavailable:
-            "That browser is not installed, so the lease was not changed."
+            "That browser is not installed, so nothing changed."
         case .noActiveLease:
-            "There is no active browser lease to end."
+            "No temporary browser is on."
         case .noUndoReceipt:
-            "There is no browser lease change to undo."
+            "There is no temporary browser change to undo."
         case .undoPreconditionFailed:
-            "Undo is no longer available because the routing configuration changed."
+            "Undo is no longer available because the rules changed."
         case .configurationPersistenceFailed:
-            "BrowserChange could not save the browser lease."
+            "Linkpick could not save the temporary browser."
         }
     }
 
@@ -1160,20 +1195,20 @@ final class BrowserStore {
             if let browserName {
                 return "\(browserName) is not available. Reinstall it or choose another browser."
             }
-            return "The previous browser is not available, so BrowserChange could not restore it."
+            return "The previous browser is not available, so Linkpick could not restore it."
         case .missingBaseline(let scheme):
             let schemeName = scheme.rawValue.uppercased()
-            return "BrowserChange cannot safely change the \(schemeName) handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
+            return "Linkpick cannot safely change the \(schemeName) handler because there is no current handler to restore. Set a default browser in System Settings, then try again."
         case .handlerChangeFailed:
             return "macOS did not change both web-link handlers. The previous handlers were restored."
         case .verificationFailed:
             return "macOS did not confirm both web-link handlers. The previous handlers were restored."
         case .handlersChangedExternally:
-            return "The web-link handlers changed elsewhere. BrowserChange kept those changes; choose a browser and repair the handlers."
+            return "The web-link handlers changed elsewhere. Linkpick kept those changes. Choose a browser and make HTTP and HTTPS match."
         case .rollbackFailed:
-            return "BrowserChange could not safely restore both web-link handlers. Repair them before trying again."
+            return "Linkpick could not restore both web-link handlers. Make HTTP and HTTPS match before trying again."
         case .statePersistenceFailed:
-            return "BrowserChange could not save the handler transaction. Reopen the app to recover it safely."
+            return "Linkpick could not save that browser change. Reopen the app and try again."
         case .noUndoReceipt:
             return "There is no browser change to undo."
         case .undoPreconditionFailed:
@@ -1228,11 +1263,11 @@ final class BrowserStore {
         } else {
             switch leaseReconciliation.issue {
             case .targetUnavailable:
-                message = "The leased browser is unavailable, so this lease is paused. Rules and the \(defaultBrowserName) fallback still apply."
+                message = "That browser is unavailable, so the temporary switch is paused. Rules and \(defaultBrowserName) still apply."
             case .selfTarget:
-                message = "BrowserChange cannot be a lease target. Rules and the \(defaultBrowserName) fallback still apply."
+                message = "Linkpick cannot be the temporary browser. Rules and \(defaultBrowserName) still apply."
             case .configurationPersistenceFailed:
-                message = "BrowserChange could not reconcile the browser lease. Expired leases will not be used for routing."
+                message = "Linkpick could not check the temporary browser. Expired ones will not be used."
             case nil, .smartRoutingUnavailable, .noActiveLease,
                     .noUndoReceipt, .undoPreconditionFailed:
                 break
@@ -1266,7 +1301,9 @@ final class BrowserStore {
         }
 
         icons = Dictionary(uniqueKeysWithValues: installed.map { browser in
-            (browser.id, NSWorkspace.shared.icon(forFile: browser.iconURL.path))
+            let icon = NSWorkspace.shared.icon(forFile: browser.iconURL.path)
+            icon.size = NSSize(width: 64, height: 64)
+            return (browser.id, icon)
         })
         revision += 1
     }

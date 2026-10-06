@@ -5,27 +5,17 @@ struct ProfilesView: View {
     @State private var newName = ""
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Routing profiles")
-                        .font(.system(size: 30, weight: .semibold))
-                        .accessibilityIdentifier("profiles-title")
-                    Text(
-                        "Only the selected profile participates in routing. Global rules always remain available."
-                    )
-                    .foregroundStyle(.secondary)
-                }
-
+        LinkpickPage(title: "Rule sets", identifier: "profiles-title") {
+            Section {
                 HStack {
-                    TextField("Profile name", text: $newName)
+                    TextField("Rule set name", text: $newName)
                         .textFieldStyle(.roundedBorder)
-                    Button("Create profile") {
+                    Button("Create rule set") {
                         if store.createProfile(named: newName) != nil {
                             newName = ""
                         }
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.bordered)
                     .disabled(
                         newName.trimmingCharacters(
                             in: .whitespacesAndNewlines
@@ -38,9 +28,9 @@ struct ProfilesView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Global rules only")
+                            Text("Everywhere")
                                 .font(.body.weight(.semibold))
-                            Text("No profile-specific rules are active.")
+                            Text(ruleSites(profileID: nil, in: store))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -48,27 +38,19 @@ struct ProfilesView: View {
                         if store.routingConfiguration.activeProfileID == nil {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
+                                .accessibilityLabel("In use")
                         }
                     }
-                    .padding(16)
+                    .padding(.vertical, 8)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .background(
-                    .quaternary.opacity(0.22),
-                    in: RoundedRectangle(cornerRadius: 12)
-                )
 
                 ForEach(store.routingConfiguration.profiles) { profile in
                     ProfileRow(profile: profile)
                 }
             }
-            .frame(maxWidth: 720, alignment: .leading)
-            .padding(.horizontal, 40)
-            .padding(.vertical, 34)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .scrollIndicators(.hidden)
     }
 }
 
@@ -85,7 +67,7 @@ private struct ProfileRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                TextField("Profile name", text: $name)
+                TextField("Rule set name", text: $name)
                     .textFieldStyle(.roundedBorder)
 
                 Button("Rename") {
@@ -109,24 +91,23 @@ private struct ProfileRow: View {
                 }
             }
 
-            HStack {
-                if store.routingConfiguration.activeProfileID == profile.id {
-                    Label("Active", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                } else {
-                    Text("Inactive")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                let ruleCount = store.routingConfiguration.domainRules.filter {
-                    $0.profileID == profile.id
-                }.count
-                Text("\(ruleCount) rule\(ruleCount == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(ruleSites(profileID: profile.id, in: store))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, 4)
     }
+}
+
+@MainActor
+private func ruleSites(profileID: UUID?, in store: BrowserStore) -> String {
+    let names = store.routingConfiguration.domainRules
+        .filter { $0.profileID == profileID }
+        .map(\.domain)
+    if names.isEmpty {
+        return profileID == nil
+            ? "No rules yet. New rules go here unless you pick another set."
+            : "No rules in this set."
+    }
+    return names.joined(separator: ", ")
 }

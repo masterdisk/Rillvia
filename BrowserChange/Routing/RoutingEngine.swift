@@ -12,19 +12,19 @@ enum RoutingDecisionReason: Equatable, Sendable {
     var summary: String {
         switch self {
         case .explicitTarget:
-            "Explicit browser choice"
+            "You picked this browser"
         case .activeLease:
-            "Active browser lease"
+            "Temporary browser"
         case .activeProfileExactHost:
-            "Exact domain rule in the active profile"
+            "Rule for this site in the active rule set"
         case .activeProfileParentDomain:
-            "Parent-domain rule in the active profile"
+            "Rule for this site and its subdomains in the active rule set"
         case .globalExactHost:
-            "Exact global domain rule"
+            "Rule for this site"
         case .globalParentDomain:
-            "Global parent-domain rule"
+            "Rule for this site and its subdomains"
         case .externalFallback:
-            "Configured external fallback"
+            "Your usual browser"
         }
     }
 }
@@ -32,13 +32,16 @@ enum RoutingDecisionReason: Equatable, Sendable {
 struct RoutingDecision: Equatable, Sendable {
     var target: BrowserReference
     var reason: RoutingDecisionReason
+    var browserProfile: BrowserProfileChoice?
 
     init(
         target: BrowserReference,
-        reason: RoutingDecisionReason = .externalFallback
+        reason: RoutingDecisionReason = .externalFallback,
+        browserProfile: BrowserProfileChoice? = nil
     ) {
         self.target = target
         self.reason = reason
+        self.browserProfile = browserProfile
     }
 }
 
@@ -185,7 +188,8 @@ struct RoutingEngine {
         for rule in exact where available(rule.browser) {
             return RoutingDecision(
                 target: rule.browser,
-                reason: exactReason(rule)
+                reason: exactReason(rule),
+                browserProfile: rule.browserProfile
             )
         }
 
@@ -218,7 +222,8 @@ struct RoutingEngine {
         for rule in parents where available(rule.browser) {
             return RoutingDecision(
                 target: rule.browser,
-                reason: parentReason(rule)
+                reason: parentReason(rule),
+                browserProfile: rule.browserProfile
             )
         }
         return nil

@@ -132,7 +132,7 @@ struct HallOfFameView: View {
                                 Label(
                                     status,
                                     systemImage: status
-                                        == "Active browser lease"
+                                        == "Temporary browser"
                                         ? "clock.badge.checkmark"
                                         : "checkmark.circle"
                                 )
@@ -166,7 +166,7 @@ struct HallOfFameView: View {
                 .padding(.top, 4)
             }
             .padding(28)
-            .frame(maxWidth: 680, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(
             minWidth: 540,

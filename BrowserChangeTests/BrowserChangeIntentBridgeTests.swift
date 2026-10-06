@@ -340,7 +340,7 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
 
         XCTAssertEqual(
             try bridge.setRoutingProfile(work.id),
-            "Using the Work routing profile."
+            "Using the Work rule set."
         )
         XCTAssertEqual(
             try repository.loadConfiguration().activeProfileID,
@@ -380,7 +380,7 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
 
         XCTAssertEqual(
             try bridge.setAutomationLeasesAllowed(true),
-            "Shortcuts may now start browser leases."
+            "Shortcuts can now switch browsers."
         )
 
         let saved = try repository.loadConfiguration()
@@ -492,7 +492,7 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
                 browserID: safari.id,
                 preset: .fifteenMinutes
             ),
-            "Borrowing Safari for 15 minutes."
+            "Using Safari for 15 minutes."
         )
         XCTAssertEqual(
             try repository.loadConfiguration().browserLease?.browser,
@@ -500,12 +500,12 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
         )
         XCTAssertEqual(
             try bridge.endBrowserLease(),
-            "Ended the browser lease."
+            "Stopped the temporary browser."
         )
         XCTAssertNil(try repository.loadConfiguration().browserLease)
         XCTAssertEqual(
             try bridge.endBrowserLease(),
-            "No browser lease is active."
+            "No temporary browser is on."
         )
         XCTAssertTrue(handler.setCalls.isEmpty)
     }
@@ -525,7 +525,7 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
                 browserID: safari.id,
                 preset: .untilEnded
             ),
-            "Borrowing Safari until ended."
+            "Using Safari until you stop."
         )
         XCTAssertTrue(handler.setCalls.isEmpty)
     }
@@ -552,7 +552,7 @@ final class BrowserChangeIntentBridgeTests: XCTestCase {
         let message = try await bridge.restorePreviousBrowser()
         XCTAssertEqual(
             message,
-            "Restored the previous Safari browser lease."
+            "Using Safari again."
         )
 
         XCTAssertEqual(

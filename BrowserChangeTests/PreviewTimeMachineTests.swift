@@ -119,16 +119,16 @@ final class PreviewTimeMachineTests: XCTestCase {
         XCTAssertEqual(
             focused.snapshots[0].changes,
             [
-                "Fallback changed from Google Chrome to Safari.",
+                "The browser for sites with no rule changed from Google Chrome to Safari.",
                 "Added 1 domain rule.",
             ]
         )
         XCTAssertEqual(
             focused.snapshots[1].changes,
             [
-                "Turned Smart Routing on.",
-                "Added the Work profile.",
-                "Selected the Work profile.",
+                "Started sending links through Linkpick.",
+                "Added the Work rule set.",
+                "Selected the Work rule set.",
             ]
         )
         XCTAssertEqual(
@@ -197,30 +197,30 @@ final class PreviewTimeMachineTests: XCTestCase {
             installedBrowsers: [safari, chrome]
         ).snapshots.reversed())
 
-        XCTAssertEqual(snapshots[1].changes, ["Added the Work profile."])
+        XCTAssertEqual(snapshots[1].changes, ["Added the Work rule set."])
         XCTAssertEqual(
             snapshots[2].changes,
-            ["Renamed the Work profile to Client."]
+            ["Renamed the Work rule set to Client."]
         )
         XCTAssertEqual(
             snapshots[3].changes,
-            ["Disabled the Client profile."]
+            ["Disabled the Client rule set."]
         )
         XCTAssertEqual(
             snapshots[4].changes,
-            ["Enabled the Client profile."]
+            ["Enabled the Client rule set."]
         )
         XCTAssertEqual(
             snapshots[5].changes,
-            ["Changed the Client profile browser from Google Chrome to Safari."]
+            ["Changed the browser for the Client rule set from Google Chrome to Safari."]
         )
         XCTAssertEqual(
             snapshots[6].changes,
-            ["Updated the Client profile."]
+            ["Updated the Client rule set."]
         )
         XCTAssertEqual(
             snapshots[7].changes,
-            ["Removed the Client profile."]
+            ["Removed the Client rule set."]
         )
         XCTAssertFalse(
             snapshots.dropFirst().contains {
@@ -260,7 +260,7 @@ final class PreviewTimeMachineTests: XCTestCase {
             HistoricalRoutingEvaluation(
                 target: safari.reference,
                 targetName: "Safari",
-                reason: "Configured external fallback"
+                reason: "Your usual browser"
             )
         )
         XCTAssertEqual(
@@ -300,7 +300,7 @@ final class PreviewTimeMachineTests: XCTestCase {
             HistoricalRoutingEvaluation(
                 target: safari.reference,
                 targetName: "Safari",
-                reason: "Active browser lease"
+                reason: "Temporary browser"
             )
         )
     }

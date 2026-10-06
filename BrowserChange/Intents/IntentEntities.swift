@@ -23,7 +23,7 @@ struct InstalledBrowserEntity: AppEntity {
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(name)",
-            subtitle: "Installed external browser"
+            subtitle: "Installed browser"
         )
     }
 }
@@ -102,7 +102,7 @@ struct RoutingProfileEntity: AppEntity {
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(name)",
-            subtitle: "Enabled routing profile"
+            subtitle: "Enabled rule set"
         )
     }
 }

@@ -74,7 +74,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
         XCTAssertFalse(result.shouldDismiss)
         XCTAssertEqual(
             result.errorMessage,
-            "The link opened in Safari, but the “Always open” rule was not saved. Reopen BrowserChange, then try again."
+            "The link opened in Safari, but the “Always open” rule was not saved. Reopen Linkpick, then try again."
         )
         XCTAssertEqual(store.message, result.errorMessage)
         XCTAssertTrue(
@@ -242,7 +242,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
         XCTAssertEqual(evaluation.target, safari.reference)
         XCTAssertEqual(
             evaluation.reason,
-            "Configured external fallback"
+            "Your usual browser"
         )
         XCTAssertTrue(launcher.calls.isEmpty)
         XCTAssertEqual(try persistedFiles(), before)
@@ -276,7 +276,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
             hall.browsers.first {
                 $0.id == chrome.id
             }?.status,
-            ["Smart Routing fallback"]
+            ["Browser for sites with no rule"]
         )
 
         for index in 0..<4 {
@@ -408,7 +408,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
         XCTAssertEqual(launcher.calls.count, 1)
         XCTAssertEqual(
             store.message,
-            "BrowserChange stopped a repeated link dispatch."
+            "Linkpick stopped a repeated link."
         )
     }
 
@@ -445,7 +445,7 @@ final class BrowserStoreTask7Tests: XCTestCase {
         )
         XCTAssertEqual(
             store.message,
-            "BrowserChange could not reconcile the browser lease. Expired leases will not be used for routing."
+            "Linkpick could not check the temporary browser. Expired ones will not be used."
         )
     }
 

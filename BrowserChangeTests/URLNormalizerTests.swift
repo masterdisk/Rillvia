@@ -38,6 +38,23 @@ final class URLNormalizerTests: XCTestCase {
         }
     }
 
+    func testNormalizeHostAcceptsBareHostsAndPastedWebURLs() throws {
+        XCTAssertEqual(
+            try URLNormalizer.normalizeHost("example.com"),
+            "example.com"
+        )
+        XCTAssertEqual(
+            try URLNormalizer.normalizeHost("  HTTPS://News.Example.com/path?q=1  "),
+            "news.example.com"
+        )
+        XCTAssertEqual(
+            try URLNormalizer.normalizeHost("example.com/docs"),
+            "example.com"
+        )
+        XCTAssertThrowsError(try URLNormalizer.normalizeHost("   "))
+        XCTAssertThrowsError(try URLNormalizer.normalizeHost("not a domain"))
+    }
+
     func testDomainMatchingUsesLabelsInsteadOfRawSuffixes() {
         XCTAssertTrue(
             URLNormalizer.host(

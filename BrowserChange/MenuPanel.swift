@@ -7,7 +7,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         Image(nsImage: menuImage(image))
-            .accessibilityLabel("BrowserChange, \(name)")
+            .accessibilityLabel("Linkpick, \(name)")
     }
 
     private func menuImage(_ source: NSImage) -> NSImage {
@@ -19,6 +19,7 @@ struct MenuBarLabel: View {
 }
 
 struct MenuPanel: View {
+    var delegate: AppDelegate
     @Environment(BrowserStore.self) private var store
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
@@ -29,181 +30,122 @@ struct MenuPanel: View {
                 $0.id == store.defaultBundleID
             }
 
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(store.routingModeTitle)
                     .font(.headline)
                     .accessibilityIdentifier("menu-routing-mode-title")
-                Text(
-                    store.isSmartRoutingConfigured
-                        ? "\(store.defaultBrowserName) is the external fallback."
-                        : "\(store.defaultBrowserName) is the Direct default."
-                )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Text(store.routingModeDetail)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 4)
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
 
             if store.hasSplitHandlers {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label(
-                        "HTTP and HTTPS handlers are split",
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
+                Text("HTTP and HTTPS open in different browsers")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
-
-                    if let message = store.splitHandlerMessage {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if !store.isSmartRoutingConfigured,
-                       let browser = store.selectedBrowserForRepair {
-                        Button("Repair handlers with \(browser.name)") {
-                            Task { await store.repairSelectedHandlers() }
-                        }
-                        .disabled(store.isSwitching)
-                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 4)
+                if let message = store.splitHandlerMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 4)
                 }
-                .padding(8)
-                .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
-            }
-
-            if store.isSmartRoutingConfigured {
-                if let fallback {
-                    Button {
-                        Task { await store.disableSmartRouting() }
-                    } label: {
-                        Label(
-                            "Turn off Smart Routing and make \(fallback.name) the Direct default",
-                            systemImage: "arrow.up.right.square"
-                        )
-                        .frame(maxWidth: .infinity)
+                if !store.isSmartRoutingConfigured,
+                   let browser = store.selectedBrowserForRepair {
+                    MenuRow(title: "Use \(browser.name) for both") {
+                        Task { await store.repairSelectedHandlers() }
                     }
-                    .buttonStyle(.glass)
                     .disabled(store.isSwitching)
                 }
-            } else if let fallback {
-                Button {
-                    Task { await store.enableSmartRouting() }
-                } label: {
-                    Label(
-                        "Turn on Smart Routing with \(fallback.name)",
-                        systemImage: "point.3.connected.trianglepath.dotted"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(store.isSwitching)
-            }
-
-            if store.activeBrowserLease != nil || store.canUndoLease {
-                MenuLeaseControls()
-            }
-
-            if store.isSmartRoutingActive {
-                Menu {
-                    ForEach(store.borrowableBrowsers) { browser in
-                        ForEach(BrowserLeasePreset.allCases) { preset in
-                            Button(
-                                preset.actionTitle(
-                                    browserName: browser.name
-                                )
-                            ) {
-                                store.borrowBrowser(
-                                    browser,
-                                    for: preset
-                                )
-                            }
-                        }
-                        if browser.id
-                            != store.borrowableBrowsers.last?.id {
-                            Divider()
-                        }
-                    }
-                } label: {
-                    Label(
-                        "Borrow a browser",
-                        systemImage: "clock.badge.checkmark"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glass)
-                .accessibilityLabel("Borrow a browser temporarily")
-                .accessibilityIdentifier("menu-borrow-browser")
-            }
-
-            if store.hasClipboardWebURL {
-                Button {
-                    guard store.stageClipboardURL() else { return }
-                    openWindow(id: "main")
-                    NSApp.activate()
-                    dismiss()
-                } label: {
-                    Label(
-                        "Open Clipboard Link…",
-                        systemImage: "checkmark.shield"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glass)
-                .accessibilityIdentifier("menu-open-clipboard-link")
             }
 
             if store.switchable.count > 7 {
-                ScrollView {
-                    rows
-                }
-                .frame(height: 380)
+                ScrollView { rows }
+                    .frame(height: 320)
             } else {
                 rows
             }
 
-            if store.canUndo {
-                Button {
-                    Task { await store.undoLastBrowserChange() }
-                } label: {
-                    Label(
-                        "Undo last browser change",
-                        systemImage: "arrow.uturn.backward"
-                    )
-                    .frame(maxWidth: .infinity)
+            if store.activeBrowserLease != nil || store.canUndoLease {
+                sectionRule
+                MenuLeaseControls()
+            }
+
+            if store.isSmartRoutingActive {
+                sectionRule
+                MenuBorrowControls()
+            }
+
+            if store.hasClipboardWebURL {
+                MenuRow(
+                    title: "Open clipboard link",
+                    identifier: "menu-open-clipboard-link"
+                ) {
+                    guard store.stageClipboardURL() else { return }
+                    presentMainWindow()
                 }
-                .buttonStyle(.glass)
+            }
+
+            if store.canUndo {
+                MenuRow(
+                    title: "Undo last change",
+                    identifier: "menu-undo-browser-change"
+                ) {
+                    Task { await store.undoLastBrowserChange() }
+                }
                 .disabled(store.isSwitching)
-                .accessibilityIdentifier("menu-undo-browser-change")
             }
 
             if let message = store.message {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
             }
 
-            Button {
-                openWindow(id: "main")
-                NSApp.activate()
-                dismiss()
-            } label: {
-                Text("Open BrowserChange")
-                    .frame(maxWidth: .infinity)
+            sectionRule
+
+            if store.isSmartRoutingConfigured, let fallback {
+                MenuRow(title: "Use \(fallback.name) for every link") {
+                    Task { await store.disableSmartRouting() }
+                }
+                .disabled(store.isSwitching)
+            } else if let fallback {
+                MenuRow(title: "Send links through Linkpick") {
+                    Task { await store.enableSmartRouting() }
+                }
+                .disabled(store.isSwitching)
             }
-            .buttonStyle(.glass)
-            .padding(.horizontal, 4)
-            .padding(.bottom, 4)
+
+            MenuRow(title: "Open Linkpick", identifier: "menu-open-app") {
+                presentMainWindow()
+            }
+            MenuRow(title: "Quit Linkpick", identifier: "menu-quit") {
+                NSApp.terminate(nil)
+            }
         }
-        .padding(12)
-        .frame(width: 300)
+        .padding(.bottom, 6)
+        .frame(width: 248)
+    }
+
+    private var sectionRule: some View {
+        Divider()
+            .padding(.vertical, 4)
+    }
+
+    private func presentMainWindow() {
+        delegate.userWantsMainWindow()
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
+        dismiss()
     }
 
     private var rows: some View {
@@ -215,55 +157,107 @@ struct MenuPanel: View {
     }
 }
 
+private struct MenuBorrowControls: View {
+    @Environment(BrowserStore.self) private var store
+    @State private var pickingBrowser = false
+    @State private var chosen: InstalledBrowser?
+
+    var body: some View {
+        if let chosen {
+            ForEach(BrowserLeasePreset.allCases) { preset in
+                MenuRow(
+                    title: preset.actionTitle(browserName: chosen.name),
+                    identifier: preset == .fifteenMinutes
+                        ? "menu-borrow-confirm"
+                        : nil
+                ) {
+                    store.borrowBrowser(chosen, for: preset)
+                    self.chosen = nil
+                    pickingBrowser = false
+                }
+            }
+        } else if pickingBrowser {
+            ForEach(store.borrowableBrowsers) { browser in
+                MenuRow(
+                    title: browser.name,
+                    identifier: "menu-borrow-choice-\(browser.name)"
+                ) {
+                    chosen = browser
+                }
+            }
+        } else {
+            MenuRow(title: "For a while", identifier: "menu-borrow-browser") {
+                pickingBrowser = true
+            }
+        }
+    }
+}
+
 private struct MenuLeaseControls: View {
     @Environment(BrowserStore.self) private var store
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let lease = store.activeBrowserLease {
-                Text(
-                    "Borrowing \(store.displayName(for: lease.browser))"
-                )
-                .font(.caption.weight(.semibold))
-                .accessibilityIdentifier("menu-active-lease-title")
-
+        if let lease = store.activeBrowserLease {
+            HStack {
+                Text("Using \(store.displayName(for: lease.browser))")
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("menu-active-lease-title")
+                Spacer()
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     Text(store.activeLeaseRemainingText ?? "")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
-                        .accessibilityIdentifier(
-                            "menu-active-lease-remaining"
-                        )
+                        .accessibilityIdentifier("menu-active-lease-remaining")
                 }
-
-                Text("Fallback and rules stay unchanged.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-                Button("End Lease", systemImage: "stop.circle") {
-                    store.endBrowserLease()
-                }
-                .accessibilityLabel("End browser lease")
-                .accessibilityIdentifier("menu-end-browser-lease")
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
 
-            if store.canUndoLease {
-                Button(
-                    "Undo lease change",
-                    systemImage: "arrow.uturn.backward"
-                ) {
-                    store.undoBrowserLeaseChange()
-                }
-                .accessibilityLabel("Undo browser lease change")
-                .accessibilityIdentifier("menu-undo-browser-lease")
+            MenuRow(title: "Stop", identifier: "menu-end-browser-lease") {
+                store.endBrowserLease()
             }
+            .accessibilityLabel("Stop")
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Color.indigo.opacity(0.08),
-            in: RoundedRectangle(cornerRadius: 8)
-        )
+
+        if store.canUndoLease {
+            MenuRow(title: "Undo", identifier: "menu-undo-browser-lease") {
+                store.undoBrowserLeaseChange()
+            }
+            .accessibilityLabel("Undo")
+        }
+    }
+}
+
+private struct MenuRow: View {
+    var title: String
+    var identifier: String?
+    var action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+                .background(hovering ? Color.primary.opacity(0.08) : Color.clear)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .modifier(MenuRowIdentifier(identifier: identifier))
+    }
+}
+
+private struct MenuRowIdentifier: ViewModifier {
+    var identifier: String?
+
+    func body(content: Content) -> some View {
+        if let identifier {
+            content.accessibilityIdentifier(identifier)
+        } else {
+            content
+        }
     }
 }
 
@@ -284,7 +278,7 @@ private struct BrowserMenuRow: View {
             HStack(spacing: 8) {
                 Image(nsImage: store.icon(for: browser))
                     .resizable()
-                    .interpolation(.high)
+                    .interpolation(.medium)
                     .frame(width: 22, height: 22)
                 Text(browser.name)
                     .lineLimit(1)
@@ -294,8 +288,8 @@ private struct BrowserMenuRow: View {
                         .font(.body.weight(.semibold))
                         .accessibilityLabel(
                             store.isSmartRoutingConfigured
-                                ? "Smart Routing fallback"
-                                : "Default"
+                                ? "Browser for sites with no rule"
+                                : "Usual browser"
                         )
                 }
             }
@@ -313,7 +307,7 @@ private struct BrowserMenuRow: View {
         .accessibilityLabel(browser.name)
         .accessibilityValue(
             isDefault && store.isSmartRoutingConfigured
-                ? "Smart Routing fallback"
+                ? "Browser for sites with no rule"
                 : ""
         )
         .accessibilityAddTraits(isDefault ? .isSelected : [])

@@ -59,7 +59,7 @@ final class AppIntentsMetadataTests: XCTestCase {
             browser.displayRepresentation.subtitle.map {
                 String(localized: $0)
             },
-            "Installed external browser"
+            "Installed browser"
         )
         XCTAssertEqual(profile.id, profileID)
         XCTAssertEqual(
@@ -70,7 +70,7 @@ final class AppIntentsMetadataTests: XCTestCase {
             profile.displayRepresentation.subtitle.map {
                 String(localized: $0)
             },
-            "Enabled routing profile"
+            "Enabled rule set"
         )
     }
 

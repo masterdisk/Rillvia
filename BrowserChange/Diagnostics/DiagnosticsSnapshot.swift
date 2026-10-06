@@ -94,7 +94,7 @@ struct DiagnosticsSnapshot: Equatable, Sendable {
                 "External fallback: \(fallback)",
                 "Active profile: \(activeProfile)",
                 "Rules: \(enabledRuleCount) enabled, \(configuration.domainRules.count) total",
-                "Active lease: \(lease)",
+                "Temporary browser: \(lease)",
             ]
         )
 
@@ -211,7 +211,7 @@ struct DiagnosticsSnapshot: Equatable, Sendable {
             return "\(browser), expired"
         }
         guard lease.expiresAt != nil else {
-            return "\(browser), until ended"
+            return "\(browser), until you stop"
         }
         return "\(browser), \(BrowserLeaseFormatting.remainingText(for: lease, at: now))"
     }

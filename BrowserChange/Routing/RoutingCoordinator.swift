@@ -2,6 +2,21 @@ import Foundation
 
 protocol ExternalURLLaunching {
     func open(_ url: URL, with browser: BrowserReference) async throws
+    func open(
+        _ url: URL,
+        with browser: BrowserReference,
+        launch: BrowserLaunchMode
+    ) async throws
+}
+
+extension ExternalURLLaunching {
+    func open(
+        _ url: URL,
+        with browser: BrowserReference,
+        launch: BrowserLaunchMode
+    ) async throws {
+        try await open(url, with: browser)
+    }
 }
 
 enum RoutingOutcome: Equatable, Sendable {
@@ -15,6 +30,7 @@ final class RoutingCoordinator {
     private struct DispatchFingerprint: Hashable {
         var urlHash: Int
         var target: BrowserReference
+        var launchKey: String
     }
 
     private let launcher: any ExternalURLLaunching
@@ -42,7 +58,8 @@ final class RoutingCoordinator {
         _ url: URL,
         configuration: RoutingConfiguration,
         explicitTarget: BrowserReference? = nil,
-        availableTargets: Set<BrowserReference>? = nil
+        availableTargets: Set<BrowserReference>? = nil,
+        explicitLaunch: BrowserLaunchMode = .standard
     ) async -> RoutingOutcome {
         let decision: RoutingDecision
         do {
@@ -62,9 +79,14 @@ final class RoutingCoordinator {
         recentDispatches = recentDispatches.filter {
             timestamp.timeIntervalSince($0.value) < duplicateInterval
         }
+        let launch = resolvedLaunch(
+            explicitLaunch: explicitLaunch,
+            decision: decision
+        )
         let fingerprint = DispatchFingerprint(
             urlHash: url.absoluteString.hashValue,
-            target: decision.target
+            target: decision.target,
+            launchKey: launchKey(for: launch)
         )
         guard recentDispatches[fingerprint] == nil else {
             return .rejected(.duplicateDispatch)
@@ -72,7 +94,11 @@ final class RoutingCoordinator {
         recentDispatches[fingerprint] = timestamp
 
         do {
-            try await launcher.open(url, with: decision.target)
+            try await launcher.open(
+                url,
+                with: decision.target,
+                launch: launch
+            )
             return .opened(decision.target)
         } catch {
             recentDispatches[fingerprint] = nil
@@ -92,6 +118,30 @@ final class RoutingCoordinator {
             explicitTarget: explicitTarget,
             availableTargets: availableTargets
         )
+    }
+
+    private func resolvedLaunch(
+        explicitLaunch: BrowserLaunchMode,
+        decision: RoutingDecision
+    ) -> BrowserLaunchMode {
+        if explicitLaunch != .standard {
+            return explicitLaunch
+        }
+        if let profile = decision.browserProfile {
+            return .profile(profile)
+        }
+        return .standard
+    }
+
+    private func launchKey(for launch: BrowserLaunchMode) -> String {
+        switch launch {
+        case .standard:
+            "standard"
+        case .privateWindow:
+            "private"
+        case .profile(let profile):
+            profile.id
+        }
     }
 
     private func disposition(for issue: RoutingIssue) -> RoutingOutcome {

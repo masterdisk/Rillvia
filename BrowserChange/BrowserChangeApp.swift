@@ -1,11 +1,62 @@
 import AppKit
 import SwiftUI
 
+struct AppLaunchWindowPolicy {
+    private var didFinishLaunching = false
+    private var receivedIncomingURLs = false
+    private(set) var shouldSuppressMainWindow = false
+    private(set) var generation = 0
+
+    mutating func recordIncomingURLs() {
+        receivedIncomingURLs = true
+        shouldSuppressMainWindow = true
+        generation += 1
+    }
+
+    mutating func finishLaunching() -> Bool {
+        guard !didFinishLaunching else { return false }
+        didFinishLaunching = true
+        return !receivedIncomingURLs
+    }
+
+    mutating func allowWindowPresentation() {
+        generation += 1
+        shouldSuppressMainWindow = false
+    }
+
+    mutating func finishHandlingIncomingURLs(generation: Int) {
+        guard generation == self.generation else { return }
+        shouldSuppressMainWindow = false
+    }
+
+    func shouldOpenOnReopen(hasVisibleWindows: Bool) -> Bool {
+        !hasVisibleWindows && !shouldSuppressMainWindow
+    }
+
+    func reopenAction(hasVisibleWindows: Bool) -> ReopenAction {
+        if shouldSuppressMainWindow {
+            return .keepClosed
+        }
+        if hasVisibleWindows {
+            return .leaveAsIs
+        }
+        return .openAfterURLDeadline
+    }
+}
+
+enum ReopenAction: Equatable {
+    case keepClosed
+    case leaveAsIs
+    case openAfterURLDeadline
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var store: BrowserStore?
     var openMainWindow: (() -> Void)?
     private let incomingURLQueue: IncomingURLQueue
+    private var launchWindowPolicy = AppLaunchWindowPolicy()
+    private var shouldPresentMainWindowWhenConnected = false
     private var isPreparedForIncomingURLs = false
     private var isPreparingForIncomingURLs = false
 
@@ -20,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--force-dark-appearance") {
             NSApp.appearance = NSAppearance(named: .darkAqua)
@@ -33,9 +85,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ), let url = URL(
             string: "https://unmatched.invalid/incoming"
         ) {
+            launchWindowPolicy.recordIncomingURLs()
             incomingURLQueue.enqueue([url])
         }
         #endif
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if launchWindowPolicy.finishLaunching() {
+            shouldPresentMainWindowWhenConnected = true
+            presentMainWindowIfPossible()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -43,7 +103,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
+        launchWindowPolicy.recordIncomingURLs()
+        shouldPresentMainWindowWhenConnected = false
         incomingURLQueue.enqueue(urls)
+        NSApp.setActivationPolicy(.accessory)
+        suppressAccidentalMainWindow()
+        scheduleSuppression()
         Task {
             if isPreparedForIncomingURLs {
                 await incomingURLQueue.drain()
@@ -53,15 +118,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    var isSuppressingMainWindow: Bool {
+        launchWindowPolicy.shouldSuppressMainWindow
+    }
+
+    func userWantsMainWindow() {
+        launchWindowPolicy.allowWindowPresentation()
+        NSApp.setActivationPolicy(.regular)
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
+        if !launchWindowPolicy.shouldSuppressMainWindow {
+            NSApp.setActivationPolicy(.accessory)
+        }
+        return false
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            openMainWindow?()
+        switch launchWindowPolicy.reopenAction(hasVisibleWindows: flag) {
+        case .keepClosed:
+            suppressAccidentalMainWindow()
+        case .leaveAsIs:
+            break
+        case .openAfterURLDeadline:
+            scheduleUserReopen()
         }
-        return true
+        return false
+    }
+
+    private func scheduleUserReopen() {
+        let generation = launchWindowPolicy.generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            guard let self else { return }
+            guard self.launchWindowPolicy.generation == generation,
+                  !self.launchWindowPolicy.shouldSuppressMainWindow else {
+                return
+            }
+            self.userWantsMainWindow()
+            self.openMainWindow?()
+        }
+    }
+
+    private func suppressAccidentalMainWindow() {
+        guard launchWindowPolicy.shouldSuppressMainWindow else { return }
+        for window in NSApp.windows where window.canBecomeMain || window.title == "Linkpick" {
+            window.orderOut(nil)
+        }
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func scheduleSuppression() {
+        let generation = launchWindowPolicy.generation
+        for delay in [0.05, 0.2, 0.6, 1.2] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+                guard self.launchWindowPolicy.shouldSuppressMainWindow,
+                      self.launchWindowPolicy.generation == generation else {
+                    return
+                }
+                self.suppressAccidentalMainWindow()
+                if delay == 1.2 {
+                    self.launchWindowPolicy.finishHandlingIncomingURLs(
+                        generation: generation
+                    )
+                }
+            }
+        }
     }
 
     func connect(
@@ -70,6 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) {
         self.store = store
         self.openMainWindow = openMainWindow
+        presentMainWindowIfPossible()
         incomingURLQueue.attach { [weak store] url in
             guard let store else {
                 return .retryLater
@@ -83,7 +206,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func prepareForIncomingURLs() async {
-        guard let store, !isPreparingForIncomingURLs else {
+        guard let store,
+              !isPreparingForIncomingURLs,
+              !isPreparedForIncomingURLs else {
             return
         }
         isPreparingForIncomingURLs = true
@@ -91,6 +216,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isPreparedForIncomingURLs = true
         isPreparingForIncomingURLs = false
         await incomingURLQueue.drain()
+    }
+
+    private func presentMainWindowIfPossible() {
+        guard shouldPresentMainWindowWhenConnected,
+              let openMainWindow else {
+            return
+        }
+        shouldPresentMainWindowWhenConnected = false
+        openMainWindow()
     }
 }
 
@@ -112,7 +246,7 @@ struct BrowserChangeApp: App {
     }
 
     var body: some Scene {
-        Window("BrowserChange", id: "main") {
+        Window("Linkpick", id: "main") {
             RootView(delegate: appDelegate)
                 .environment(store)
         }
@@ -120,18 +254,46 @@ struct BrowserChangeApp: App {
         .defaultPosition(.center)
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .handlesExternalEvents(matching: [])
         .commands {
             BrowserChangeCommands(store: store)
         }
 
         MenuBarExtra {
-            MenuPanel()
+            MenuPanel(delegate: appDelegate)
                 .environment(store)
         } label: {
-            MenuBarLabel(image: store.menuBarSource, name: store.defaultBrowserName)
-                .id(store.revision)
+            ConnectedMenuBarLabel(
+                delegate: appDelegate,
+                store: store
+            )
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+private struct ConnectedMenuBarLabel: View {
+    var delegate: AppDelegate
+    var store: BrowserStore
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        MenuBarLabel(
+            image: store.menuBarSource,
+            name: store.defaultBrowserName
+        )
+        .onAppear {
+            delegate.connect(store: store) {
+                delegate.userWantsMainWindow()
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            Task {
+                await delegate.prepareForIncomingURLs()
+            }
+        }
     }
 }
 
@@ -139,14 +301,24 @@ private struct RootView: View {
     var delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
     @Environment(BrowserStore.self) private var store
+    @State private var showIntro = false
 
     var body: some View {
         ContentView()
             .modifier(UITestingAccessibilityEnvironment())
+            .sheet(isPresented: $showIntro) {
+                IntroView {
+                    showIntro = false
+                }
+            }
             .onAppear {
                 delegate.connect(store: store) {
+                    delegate.userWantsMainWindow()
                     openWindow(id: "main")
-                    NSApp.activate()
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                if !delegate.isSuppressingMainWindow {
+                    showIntro = IntroPreferences.shouldPresent
                 }
             }
             .task {

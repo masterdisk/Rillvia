@@ -494,25 +494,25 @@ final class BrowserLeaseCoordinatorTests: XCTestCase {
                 ),
                 at: now
             ),
-            "Until ended"
+            "Until you stop"
         )
         XCTAssertEqual(
             BrowserLeasePreset.fifteenMinutes.actionTitle(
                 browserName: "Safari"
             ),
-            "Borrow Safari for 15 minutes"
+            "Use Safari for 15 minutes"
         )
         XCTAssertEqual(
             BrowserLeasePreset.untilEnded.actionTitle(
                 browserName: "Safari"
             ),
-            "Borrow Safari until ended"
+            "Use Safari until you stop"
         )
         XCTAssertEqual(
             BrowserLeasePreset.untilEnded.activeDescription(
                 browserName: "Safari"
             ),
-            "Safari is borrowed until ended"
+            "Using Safari until you stop"
         )
     }
 

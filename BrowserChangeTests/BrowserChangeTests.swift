@@ -79,6 +79,31 @@ final class BrowserDirectoryTests: XCTestCase {
         )
         XCTAssertEqual(browsers.map(\.name), ["Google Chrome"])
     }
+
+    func testDropsBrowserSwitchUtilities() {
+        let chrome = URL(fileURLWithPath: "/Applications/Google Chrome.app")
+        let chooser = URL(fileURLWithPath: "/Users/me/Applications/Browser Switch.app")
+        let facts: [URL: BundleFacts] = [
+            chrome: BundleFacts(
+                bundleID: "com.google.Chrome",
+                name: "Google Chrome",
+                version: "140",
+                urlTypes: [["http", "https"]]
+            ),
+            chooser: BundleFacts(
+                bundleID: "com.adamabernathy.browserswitch",
+                name: "Browser Switch",
+                version: "0.9.0",
+                urlTypes: [["http", "https"]]
+            ),
+        ]
+        let browsers = BrowserDirectory.assemble(
+            https: [chrome, chooser],
+            http: [chrome, chooser],
+            facts: { facts[$0] }
+        )
+        XCTAssertEqual(browsers.map(\.name), ["Google Chrome"])
+    }
 }
 
 final class BrowserLocationTests: XCTestCase {

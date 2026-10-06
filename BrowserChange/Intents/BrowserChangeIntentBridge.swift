@@ -29,29 +29,29 @@ extension BrowserChangeAutomationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedURL:
-            "BrowserChange can open only HTTP and HTTPS links."
+            "Linkpick can open only HTTP and HTTPS links."
         case .smartRoutingUnavailable:
-            "Smart Routing is not active."
+            "Linkpick is not sending links."
         case .selfTarget:
-            "BrowserChange cannot open a link in itself."
+            "Linkpick cannot open a link in itself."
         case .browserUnavailable:
             "The selected browser is not installed."
         case .profileUnavailable:
-            "The selected routing profile is no longer available."
+            "That rule set is no longer available."
         case .automationLeasePermissionDisabled:
-            "Browser lease automations are not allowed."
+            "Shortcuts are not allowed to switch browsers."
         case .handlerTransitionInProgress:
-            "BrowserChange is still completing a web-link handler change."
+            "Linkpick is still changing how links open."
         case .noUndoAvailable:
             "There is no previous browser change to restore."
         case .duplicateDispatch:
-            "BrowserChange stopped a repeated link dispatch."
+            "Linkpick stopped a repeated link."
         case .launchFailed:
             "The selected browser could not open the link."
         case .restoreFailed:
-            "BrowserChange could not safely restore the previous browser."
+            "Linkpick could not restore the previous browser."
         case .persistenceFailed:
-            "BrowserChange could not save its routing configuration."
+            "Linkpick could not save this."
         }
     }
 
@@ -60,27 +60,27 @@ extension BrowserChangeAutomationError: LocalizedError {
         case .unsupportedURL:
             "Choose a link that starts with http:// or https://."
         case .smartRoutingUnavailable:
-            "Open BrowserChange and verify that Smart Routing is active."
+            "Open Linkpick and turn on link sending."
         case .selfTarget:
-            "Choose an installed external browser."
+            "Choose an installed browser."
         case .browserUnavailable:
             "Reinstall the browser or choose another installed browser."
         case .profileUnavailable:
-            "Choose an enabled profile that still exists."
+            "Choose an enabled rule set that still exists."
         case .automationLeasePermissionDisabled:
-            "Turn on “Allow Shortcuts to start leases” in BrowserChange first."
+            "Turn on “Let Shortcuts switch browsers” in Linkpick first."
         case .handlerTransitionInProgress:
-            "Wait for the current routing mode change to finish, then try again."
+            "Wait for the current change to finish, then try again."
         case .noUndoAvailable:
-            "Start or end a lease, or make a Direct browser change, before running this shortcut."
+            "Switch browsers for a while, or change the usual browser, before running this shortcut."
         case .duplicateDispatch:
             "Wait a moment, then run the shortcut again if needed."
         case .launchFailed:
             "Reinstall the browser or choose another browser."
         case .restoreFailed:
-            "Open BrowserChange and review the current web-link handlers."
+            "Open Linkpick and check which browser opens links."
         case .persistenceFailed:
-            "Reopen BrowserChange and try again."
+            "Reopen Linkpick and try again."
         }
     }
 }
@@ -249,7 +249,7 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         switch smartRoutingCoordinator.applyConfiguration(configuration) {
         case .succeeded:
             onStateChanged?()
-            return "Using the \(profile.name) routing profile."
+            return "Using the \(profile.name) rule set."
         case .failed(let issue), .degraded(let issue):
             throw automationError(for: issue)
         }
@@ -269,8 +269,8 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         }
         if configuration.allowAutomationLeases == isAllowed {
             return isAllowed
-                ? "Shortcuts may start browser leases."
-                : "Shortcuts cannot start browser leases."
+                ? "Shortcuts can switch browsers."
+                : "Shortcuts cannot switch browsers."
         }
 
         configuration.allowAutomationLeases = isAllowed
@@ -278,8 +278,8 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         case .succeeded:
             onStateChanged?()
             return isAllowed
-                ? "Shortcuts may now start browser leases."
-                : "Shortcuts can no longer start browser leases."
+                ? "Shortcuts can now switch browsers."
+                : "Shortcuts can no longer switch browsers."
         case .failed(let issue), .degraded(let issue):
             throw automationError(for: issue)
         }
@@ -316,9 +316,9 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         ) {
         case .succeeded:
             if preset == .untilEnded {
-                return "Borrowing \(browser.name) until ended."
+                return "Using \(browser.name) until you stop."
             }
-            return "Borrowing \(browser.name) for \(preset.title.lowercased())."
+            return "Using \(browser.name) for \(preset.title.lowercased())."
         case .failed(let issue):
             throw automationError(for: issue)
         }
@@ -328,9 +328,9 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
         defer { onStateChanged?() }
         switch browserLeaseCoordinator.endLease() {
         case .succeeded:
-            return "Ended the browser lease."
+            return "Stopped the temporary browser."
         case .failed(.noActiveLease):
-            return "No browser lease is active."
+            return "No temporary browser is on."
         case .failed(let issue):
             throw automationError(for: issue)
         }
@@ -352,9 +352,9 @@ final class BrowserChangeIntentBridge: @unchecked Sendable {
                 let restored = try repository.loadConfiguration()
                     .browserLease
                 if let restored {
-                    return "Restored the previous \(name(for: restored.browser)) browser lease."
+                    return "Using \(name(for: restored.browser)) again."
                 }
-                return "Restored the previous browser lease state."
+                return "Restored the previous temporary browser."
             case .failed(let issue):
                 throw automationError(for: issue)
             }

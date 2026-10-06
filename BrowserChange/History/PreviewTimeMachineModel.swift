@@ -126,8 +126,8 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
         if previous.mode != current.mode {
             result.append(
                 current.mode == .smart
-                    ? "Turned Smart Routing on."
-                    : "Turned Smart Routing off."
+                    ? "Started sending links through Linkpick."
+                    : "Stopped sending links through Linkpick."
             )
         }
 
@@ -138,14 +138,14 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
             ) {
             case (.some(let old), .some(let new)):
                 result.append(
-                    "Fallback changed from \(browserName(old, installedBrowsers: installedBrowsers)) to \(browserName(new, installedBrowsers: installedBrowsers))."
+                    "The browser for sites with no rule changed from \(browserName(old, installedBrowsers: installedBrowsers)) to \(browserName(new, installedBrowsers: installedBrowsers))."
                 )
             case (.none, .some(let new)):
                 result.append(
-                    "Set \(browserName(new, installedBrowsers: installedBrowsers)) as the fallback."
+                    "Set \(browserName(new, installedBrowsers: installedBrowsers)) as the browser for sites with no rule."
                 )
             case (.some, .none):
-                result.append("Removed the external fallback.")
+                result.append("Removed the browser for sites with no rule.")
             case (.none, .none):
                 break
             }
@@ -164,9 +164,9 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
                let name = current.profiles.first(
                 where: { $0.id == profileID }
                )?.name {
-                result.append("Selected the \(name) profile.")
+                result.append("Selected the \(name) rule set.")
             } else {
-                result.append("Returned to global rules only.")
+                result.append("Using rules that apply everywhere.")
             }
         }
 
@@ -188,10 +188,10 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
         if previous.browserLease != current.browserLease {
             if let lease = current.browserLease {
                 result.append(
-                    "Started a lease for \(browserName(lease.browser, installedBrowsers: installedBrowsers))."
+                    "Started using \(browserName(lease.browser, installedBrowsers: installedBrowsers)) for a while."
                 )
             } else {
-                result.append("Ended the browser lease.")
+                result.append("Stopped the temporary browser.")
             }
         }
 
@@ -199,8 +199,8 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
             != current.allowAutomationLeases {
             result.append(
                 current.allowAutomationLeases
-                    ? "Allowed Shortcuts to start leases."
-                    : "Stopped Shortcuts from starting leases."
+                    ? "Allowed Shortcuts to switch browsers."
+                    : "Stopped Shortcuts from switching browsers."
             )
         }
 
@@ -227,13 +227,13 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
         for profile in previous
             .filter({ currentByID[$0.id] == nil })
             .sorted(by: profileComesBefore) {
-            result.append("Removed the \(profile.name) profile.")
+            result.append("Removed the \(profile.name) rule set.")
         }
 
         for profile in current
             .filter({ previousByID[$0.id] == nil })
             .sorted(by: profileComesBefore) {
-            result.append("Added the \(profile.name) profile.")
+            result.append("Added the \(profile.name) rule set.")
         }
 
         let retainedProfiles = current
@@ -248,15 +248,15 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
             var describedVisibleChange = false
             if old.name != profile.name {
                 result.append(
-                    "Renamed the \(old.name) profile to \(profile.name)."
+                    "Renamed the \(old.name) rule set to \(profile.name)."
                 )
                 describedVisibleChange = true
             }
             if old.isEnabled != profile.isEnabled {
                 result.append(
                     profile.isEnabled
-                        ? "Enabled the \(profile.name) profile."
-                        : "Disabled the \(profile.name) profile."
+                        ? "Enabled the \(profile.name) rule set."
+                        : "Disabled the \(profile.name) rule set."
                 )
                 describedVisibleChange = true
             }
@@ -264,15 +264,15 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
                 switch (old.browser, profile.browser) {
                 case (.some(let oldBrowser), .some(let newBrowser)):
                     result.append(
-                        "Changed the \(profile.name) profile browser from \(browserName(oldBrowser, installedBrowsers: installedBrowsers)) to \(browserName(newBrowser, installedBrowsers: installedBrowsers))."
+                        "Changed the browser for the \(profile.name) rule set from \(browserName(oldBrowser, installedBrowsers: installedBrowsers)) to \(browserName(newBrowser, installedBrowsers: installedBrowsers))."
                     )
                 case (.none, .some(let browser)):
                     result.append(
-                        "Set \(browserName(browser, installedBrowsers: installedBrowsers)) as the \(profile.name) profile browser."
+                        "Set \(browserName(browser, installedBrowsers: installedBrowsers)) as the browser for the \(profile.name) rule set."
                     )
                 case (.some, .none):
                     result.append(
-                        "Removed the \(profile.name) profile browser."
+                        "Removed the browser from the \(profile.name) rule set."
                     )
                 case (.none, .none):
                     break
@@ -286,7 +286,7 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
                     && (old.revision != profile.revision
                         || old.updatedAt != profile.updatedAt))
             if hasOtherChange || !describedVisibleChange {
-                result.append("Updated the \(profile.name) profile.")
+                result.append("Updated the \(profile.name) rule set.")
             }
         }
 
@@ -319,11 +319,11 @@ struct PreviewTimeMachineModel: Equatable, Sendable {
         case .unsupportedURL:
             "Enter an HTTP or HTTPS URL."
         case .smartRoutingUnavailable:
-            "Smart Routing was off in this snapshot."
+            "Linkpick was not sending links in this snapshot."
         case .missingFallback:
-            "No currently installed browser can handle this snapshot."
+            "No installed browser can open this link in this snapshot."
         case .selfTarget:
-            "This snapshot points back to BrowserChange and cannot be evaluated."
+            "This snapshot points back to Linkpick and cannot be checked."
         case .explicitTargetUnavailable:
             "The selected browser is no longer available."
         case .duplicateDispatch, .launchFailed:

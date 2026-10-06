@@ -55,6 +55,15 @@ enum BrowserDirectory {
             }
     }
 
+    static func isChooser(_ facts: BundleFacts) -> Bool {
+        let identifier = facts.bundleID.lowercased()
+        let name = facts.name.lowercased()
+        if identifier.contains("browserswitch") || identifier.contains("browser-switch") {
+            return true
+        }
+        return name == "browser switch" || name == "browserswitch"
+    }
+
     static func isHelper(_ facts: BundleFacts) -> Bool {
         let identifier = facts.bundleID.lowercased()
         if identifier.contains("helper") {
@@ -89,7 +98,7 @@ enum BrowserDirectory {
         for url in urls {
             guard let info = facts(url) else { continue }
             if info.bundleID == excluding { continue }
-            if isHelper(info) { continue }
+            if isHelper(info) || isChooser(info) { continue }
             if !isBrowser(info) { continue }
             if let allowed, !allowed.contains(info.bundleID) { continue }
             if !seen.insert(info.bundleID).inserted { continue }

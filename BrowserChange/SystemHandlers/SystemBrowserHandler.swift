@@ -21,6 +21,21 @@ protocol WorkspaceApplicationAccess {
         _ url: URL,
         withApplicationAt applicationURL: URL
     ) async throws
+    func open(
+        _ url: URL,
+        withApplicationAt applicationURL: URL,
+        arguments: [String]
+    ) async throws
+}
+
+extension WorkspaceApplicationAccess {
+    func open(
+        _ url: URL,
+        withApplicationAt applicationURL: URL,
+        arguments: [String]
+    ) async throws {
+        try await open(url, withApplicationAt: applicationURL)
+    }
 }
 
 final class NSWorkspaceApplicationAccess: WorkspaceApplicationAccess {
@@ -54,9 +69,29 @@ final class NSWorkspaceApplicationAccess: WorkspaceApplicationAccess {
         _ url: URL,
         withApplicationAt applicationURL: URL
     ) async throws {
+        try await open(
+            url,
+            withApplicationAt: applicationURL,
+            arguments: []
+        )
+    }
+
+    func open(
+        _ url: URL,
+        withApplicationAt applicationURL: URL,
+        arguments: [String]
+    ) async throws {
         let configuration = NSWorkspace.OpenConfiguration()
+        configuration.promptsUserIfNeeded = false
+        let urls: [URL]
+        if arguments.isEmpty {
+            urls = [url]
+        } else {
+            configuration.arguments = arguments
+            urls = []
+        }
         _ = try await workspace.open(
-            [url],
+            urls,
             withApplicationAt: applicationURL,
             configuration: configuration
         )
@@ -120,12 +155,33 @@ final class SystemBrowserHandler: SystemBrowserHandling {
     }
 
     func open(_ url: URL, with browser: BrowserReference) async throws {
+        try await open(url, with: browser, launch: .standard)
+    }
+
+    func open(
+        _ url: URL,
+        with browser: BrowserReference,
+        launch: BrowserLaunchMode
+    ) async throws {
         try rejectBrowserChange(browser)
         guard let applicationURL = applicationURL(for: browser) else {
             throw SystemBrowserHandlerError.applicationNotFound(browser)
         }
 
-        try await workspace.open(url, withApplicationAt: applicationURL)
+        let arguments = BrowserProfileCatalog.launchArguments(
+            bundleIdentifier: browser.bundleIdentifier,
+            launch: launch,
+            url: url
+        )
+        if arguments.isEmpty {
+            try await workspace.open(url, withApplicationAt: applicationURL)
+        } else {
+            try await workspace.open(
+                url,
+                withApplicationAt: applicationURL,
+                arguments: arguments
+            )
+        }
     }
 
     private func currentHandler(for scheme: WebScheme) -> HandlerApplication? {

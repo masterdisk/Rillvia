@@ -89,13 +89,22 @@ final class FakeURLLauncher: ExternalURLLaunching {
     struct Call: Equatable {
         var url: URL
         var browser: BrowserReference
+        var launch: BrowserLaunchMode = .standard
     }
 
     var error: Error?
     private(set) var calls: [Call] = []
 
     func open(_ url: URL, with browser: BrowserReference) async throws {
-        calls.append(Call(url: url, browser: browser))
+        try await open(url, with: browser, launch: .standard)
+    }
+
+    func open(
+        _ url: URL,
+        with browser: BrowserReference,
+        launch: BrowserLaunchMode
+    ) async throws {
+        calls.append(Call(url: url, browser: browser, launch: launch))
         if let error {
             throw error
         }

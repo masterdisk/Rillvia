@@ -6,18 +6,8 @@ struct LinkAirlockView: View {
     @State private var chooserItem: AirlockItem?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Link Airlock")
-                        .font(.system(size: 30, weight: .semibold))
-                        .accessibilityIdentifier("airlock-title")
-                    Text(
-                        "Inspect links and their predicted browser before anything opens."
-                    )
-                    .foregroundStyle(.secondary)
-                }
-
+        LinkpickPage(title: "Check a link", identifier: "airlock-title") {
+            Section {
                 VStack(alignment: .leading, spacing: 10) {
                     TextEditor(text: $input)
                         .font(.body.monospaced())
@@ -33,7 +23,7 @@ struct LinkAirlockView: View {
                         Button("Preview links", systemImage: "checkmark.shield") {
                             store.stageAirlock(text: input)
                         }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("airlock-preview")
 
                         Button("Clear") {
@@ -93,12 +83,7 @@ struct LinkAirlockView: View {
                     }
                 }
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 40)
-            .padding(.vertical, 34)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .scrollIndicators(.hidden)
         .sheet(item: $chooserItem) { item in
             BrowserChooserView(item: item)
         }
@@ -113,34 +98,27 @@ private struct AirlockItemCard: View {
     var body: some View {
         let decision = store.prediction(for: item)
 
-        VStack(alignment: .leading, spacing: 12) {
-            Text(item.originalText)
-                .font(.callout.monospaced())
-                .textSelection(.enabled)
-                .lineLimit(3)
-
-            LabeledContent("Normalized host") {
-                Text(item.normalized.host)
-                    .font(.body.weight(.medium))
-                    .textSelection(.enabled)
-            }
-
-            LabeledContent("Predicted browser") {
-                if let decision {
-                    VStack(alignment: .trailing, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.normalized.host)
+                        .font(.body.weight(.semibold))
+                        .textSelection(.enabled)
+                    if let decision {
                         Text(store.displayName(for: decision.target))
-                            .font(.body.weight(.medium))
-                            .accessibilityIdentifier(
-                                "airlock-predicted-browser"
-                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("airlock-predicted-browser")
                         Text(decision.reason.summary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    } else {
+                        Text("Linkpick is not sending links")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                } else {
-                    Text("Smart Routing unavailable")
-                        .foregroundStyle(.secondary)
                 }
+                Spacer()
             }
 
             if !item.warnings.isEmpty {
@@ -161,7 +139,7 @@ private struct AirlockItemCard: View {
                 Button("Open now") {
                     Task { await store.openAirlockNow(item) }
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .disabled(decision == nil)
 
                 Button("Open in…") {
@@ -170,12 +148,7 @@ private struct AirlockItemCard: View {
                 .accessibilityIdentifier("airlock-open-in")
             }
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(.quaternary)
-        }
+        .padding(.vertical, 8)
     }
 }
 
@@ -203,20 +176,20 @@ private struct BrowserChooserView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Toggle("Always open this domain here", isOn: $alwaysOpen)
+            Toggle("Always open this site here", isOn: $alwaysOpen)
                 .accessibilityIdentifier("chooser-always")
 
             if alwaysOpen {
                 Picker("Match", selection: $scope) {
-                    Text("Exact host").tag(DomainRuleScope.exactHost)
-                    Text("Include subdomains").tag(
+                    Text("This site").tag(DomainRuleScope.exactHost)
+                    Text("This site and subdomains").tag(
                         DomainRuleScope.includeSubdomains
                     )
                 }
                 .pickerStyle(.radioGroup)
 
-                Picker("Rule owner", selection: $profileID) {
-                    Text("Global").tag(UUID?.none)
+                Picker("Rule set", selection: $profileID) {
+                    Text("Everywhere").tag(UUID?.none)
                     ForEach(store.routingConfiguration.profiles) { profile in
                         Text(profile.name).tag(Optional(profile.id))
                     }
@@ -238,39 +211,33 @@ private struct BrowserChooserView: View {
             Divider()
 
             ForEach(store.externalBrowsers) { browser in
-                Button {
-                    let teachingScope = alwaysOpen ? scope : nil
-                    isOpening = true
-                    errorMessage = nil
-                    Task {
-                        let result = await store
-                            .openAirlockFromChooser(
-                                item,
-                                in: browser.reference,
-                                always: teachingScope,
-                                profileID: alwaysOpen
-                                    ? profileID
-                                    : nil
-                            )
-                        isOpening = false
-                        if result.shouldDismiss {
-                            dismiss()
-                        } else {
-                            errorMessage = result.errorMessage
-                        }
+                chooserButton(
+                    title: "Open in \(browser.name)",
+                    identifier: "chooser-open-\(browser.name)",
+                    browser: browser,
+                    launch: .standard
+                )
+
+                let profiles = store.browserProfiles(for: browser.id)
+                if profiles.count > 1 {
+                    ForEach(profiles) { profile in
+                        chooserButton(
+                            title: "Open in \(browser.name) · \(profile.name)",
+                            identifier: "chooser-profile-\(browser.name)-\(profile.key)",
+                            browser: browser,
+                            launch: .profile(profile)
+                        )
                     }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(nsImage: store.icon(for: browser))
-                            .resizable()
-                            .frame(width: 24, height: 24)
-                        Text("Open in \(browser.name)")
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
                 }
-                .disabled(isOpening)
-                .accessibilityIdentifier("chooser-open-\(browser.name)")
+
+                if store.supportsPrivateWindow(browser.id) {
+                    chooserButton(
+                        title: "Open in \(browser.name) private",
+                        identifier: "chooser-private-\(browser.name)",
+                        browser: browser,
+                        launch: .privateWindow
+                    )
+                }
             }
 
             Button("Cancel", role: .cancel) {
@@ -279,11 +246,50 @@ private struct BrowserChooserView: View {
             .disabled(isOpening)
         }
         .padding(24)
-        .frame(width: 420)
+        .frame(width: 480)
         .onChange(of: alwaysOpen) {
             if !alwaysOpen {
                 errorMessage = nil
             }
         }
+    }
+
+    private func chooserButton(
+        title: String,
+        identifier: String,
+        browser: InstalledBrowser,
+        launch: BrowserLaunchMode
+    ) -> some View {
+        Button {
+            let teachingScope = alwaysOpen ? scope : nil
+            isOpening = true
+            errorMessage = nil
+            Task {
+                let result = await store.openAirlockFromChooser(
+                    item,
+                    in: browser.reference,
+                    always: teachingScope,
+                    profileID: alwaysOpen ? profileID : nil,
+                    launch: launch
+                )
+                isOpening = false
+                if result.shouldDismiss {
+                    dismiss()
+                } else {
+                    errorMessage = result.errorMessage
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(nsImage: store.icon(for: browser))
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                Text(title)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .disabled(isOpening)
+        .accessibilityIdentifier(identifier)
     }
 }

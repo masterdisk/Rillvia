@@ -55,7 +55,7 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
 
         XCTAssertEqual(store.routingState, .direct)
         XCTAssertEqual(store.defaultBundleID, chrome.id)
-        XCTAssertEqual(store.routingModeTitle, "Direct")
+        XCTAssertEqual(store.routingModeTitle, "Usual browser")
         XCTAssertTrue(handler.setCalls.isEmpty)
     }
 
@@ -70,9 +70,9 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
             .smartActive(chrome.reference)
         )
         XCTAssertEqual(store.defaultBundleID, chrome.id)
-        XCTAssertEqual(store.routingModeTitle, "Smart Routing")
+        XCTAssertEqual(store.routingModeTitle, "Sending links")
         XCTAssertEqual(handler.handlers, .same(application(for: browserChange)))
-        XCTAssertEqual(store.message, "Smart Routing is on with Google Chrome as its fallback.")
+        XCTAssertEqual(store.message, "Links open in Google Chrome, unless a rule says otherwise.")
     }
 
     func testSmartExternalOwnershipPublishesSuspendedWithoutReclaiming() async throws {
@@ -93,7 +93,7 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         )
         XCTAssertEqual(store.defaultBundleID, chrome.id)
         XCTAssertTrue(handler.setCalls.isEmpty)
-        XCTAssertTrue(store.routingModeDetail.contains("changed outside"))
+        XCTAssertTrue(store.routingModeDetail.contains("will not take it back"))
     }
 
     func testSuspendedSplitHandlersStillDisplayConfiguredFallback() async throws {
@@ -136,7 +136,7 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
             .smartActive(safari.reference)
         )
         XCTAssertEqual(store.defaultBundleID, safari.id)
-        XCTAssertEqual(store.message, "Safari is now the Smart Routing fallback.")
+        XCTAssertEqual(store.message, "Safari is now the browser used when no rule matches.")
     }
 
     func testChangingFallbackSignalsAQueuedURLRetry() async {
@@ -165,7 +165,7 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         XCTAssertEqual(store.defaultBundleID, chrome.id)
         XCTAssertEqual(
             store.message,
-            "Smart Routing is off. Google Chrome is now the Direct default."
+            "Stopped. Google Chrome is the usual browser."
         )
     }
 
@@ -205,7 +205,7 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         XCTAssertTrue(launcher.calls.isEmpty)
         XCTAssertEqual(
             store.message,
-            "BrowserChange only routes HTTP and HTTPS links."
+            "Linkpick only opens HTTP and HTTPS links."
         )
     }
 
@@ -224,7 +224,7 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         XCTAssertEqual(launcher.calls.count, 1)
         XCTAssertEqual(
             store.message,
-            "Google Chrome could not open the link. Reinstall it or choose another Smart Routing fallback."
+            "Google Chrome could not open the link. Reinstall it or choose another browser."
         )
     }
 
@@ -314,5 +314,78 @@ final class AppDelegateIncomingURLTests: XCTestCase {
         delegate.application(NSApplication.shared, open: urls)
 
         XCTAssertEqual(queue.pendingCount, 2)
+    }
+}
+
+final class AppLaunchWindowPolicyTests: XCTestCase {
+    func testNormalColdLaunchRequestsTheMainWindowOnce() {
+        var policy = AppLaunchWindowPolicy()
+
+        XCTAssertTrue(policy.finishLaunching())
+        XCTAssertFalse(policy.finishLaunching())
+    }
+
+    func testURLColdLaunchSuppressesTheMainWindow() {
+        var policy = AppLaunchWindowPolicy()
+
+        policy.recordIncomingURLs()
+
+        XCTAssertFalse(policy.finishLaunching())
+    }
+
+    func testURLReceivedAfterNormalLaunchDoesNotChangeInitialDecision() {
+        var policy = AppLaunchWindowPolicy()
+
+        XCTAssertTrue(policy.finishLaunching())
+        policy.recordIncomingURLs()
+
+        XCTAssertFalse(policy.finishLaunching())
+        XCTAssertTrue(policy.shouldSuppressMainWindow)
+        XCTAssertFalse(policy.shouldOpenOnReopen(hasVisibleWindows: false))
+    }
+
+    func testUserRequestClearsIncomingURLSuppression() {
+        var policy = AppLaunchWindowPolicy()
+        policy.recordIncomingURLs()
+        let generation = policy.generation
+
+        policy.allowWindowPresentation()
+
+        XCTAssertFalse(policy.shouldSuppressMainWindow)
+        XCTAssertTrue(policy.shouldOpenOnReopen(hasVisibleWindows: false))
+        policy.finishHandlingIncomingURLs(generation: generation)
+        XCTAssertFalse(policy.shouldSuppressMainWindow)
+    }
+
+    func testLinkReopenStaysClosedUntilTheURLDeadlinePasses() {
+        var policy = AppLaunchWindowPolicy()
+
+        XCTAssertEqual(
+            policy.reopenAction(hasVisibleWindows: false),
+            .openAfterURLDeadline
+        )
+
+        policy.recordIncomingURLs()
+
+        XCTAssertEqual(
+            policy.reopenAction(hasVisibleWindows: false),
+            .keepClosed
+        )
+        XCTAssertEqual(
+            policy.reopenAction(hasVisibleWindows: true),
+            .keepClosed
+        )
+    }
+
+    func testStaleURLHandlingDoesNotClearANewerSuppression() {
+        var policy = AppLaunchWindowPolicy()
+        policy.recordIncomingURLs()
+        let first = policy.generation
+        policy.recordIncomingURLs()
+
+        policy.finishHandlingIncomingURLs(generation: first)
+
+        XCTAssertTrue(policy.shouldSuppressMainWindow)
+        XCTAssertFalse(policy.shouldOpenOnReopen(hasVisibleWindows: false))
     }
 }

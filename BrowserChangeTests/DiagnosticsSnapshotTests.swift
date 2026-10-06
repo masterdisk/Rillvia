@@ -117,7 +117,7 @@ final class DiagnosticsSnapshotTests: XCTestCase {
         XCTAssertTrue(text.contains("Rules: 1 enabled, 2 total"))
         XCTAssertTrue(
             text.contains(
-                "Active lease: Safari (com.apple.Safari), until ended"
+                "Temporary browser: Safari (com.apple.Safari), until you stop"
             )
         )
         XCTAssertTrue(text.contains("Pending operation: Smart activation"))

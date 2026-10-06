@@ -77,8 +77,7 @@ enum URLNormalizer {
     static func normalizeHost(_ value: String) throws -> String {
         let candidate = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty,
-              candidate.rangeOfCharacter(from: CharacterSet(charactersIn: "/@?#")) == nil,
-              let url = URL(string: "https://\(candidate)") else {
+              let url = webURL(fromUserInput: candidate) else {
             throw URLNormalizationIssue.malformedHost
         }
         return try normalize(url).host
@@ -104,6 +103,26 @@ enum URLNormalizer {
             return false
         }
         return Array(hostLabels.suffix(domainLabels.count)) == domainLabels
+    }
+
+    private static func webURL(fromUserInput candidate: String) -> URL? {
+        if let url = URL(string: candidate),
+           let scheme = url.scheme?.lowercased(),
+           scheme == "http" || scheme == "https",
+           url.host != nil {
+            return url
+        }
+        guard candidate.rangeOfCharacter(from: CharacterSet(charactersIn: "@")) == nil else {
+            return nil
+        }
+        let hostEnd = candidate.firstIndex(where: { character in
+            character == "/" || character == "?" || character == "#"
+        })
+        let hostCandidate = hostEnd.map { String(candidate[..<$0]) } ?? candidate
+        guard !hostCandidate.isEmpty else {
+            return nil
+        }
+        return URL(string: "https://\(hostCandidate)")
     }
 
     private static func isValidDomain(_ host: String) -> Bool {

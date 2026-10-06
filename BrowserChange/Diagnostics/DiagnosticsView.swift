@@ -68,7 +68,7 @@ struct DiagnosticsView: View {
             }
         }
         .padding(28)
-        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(
             minWidth: 560,
             idealWidth: 720,

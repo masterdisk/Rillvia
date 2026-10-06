@@ -37,6 +37,7 @@ struct DomainRule: Codable, Equatable, Identifiable, Sendable {
     var scope: DomainRuleScope
     var browser: BrowserReference
     var profileID: UUID?
+    var browserProfile: BrowserProfileChoice?
     var isEnabled: Bool
     var createdAt: Date
     var updatedAt: Date
@@ -49,6 +50,7 @@ struct DomainRule: Codable, Equatable, Identifiable, Sendable {
         scope: DomainRuleScope = .exactHost,
         browser: BrowserReference,
         profileID: UUID? = nil,
+        browserProfile: BrowserProfileChoice? = nil,
         isEnabled: Bool = true,
         createdAt: Date = .now,
         updatedAt: Date = .now,
@@ -60,6 +62,7 @@ struct DomainRule: Codable, Equatable, Identifiable, Sendable {
         self.scope = scope
         self.browser = browser
         self.profileID = profileID
+        self.browserProfile = browserProfile
         self.isEnabled = isEnabled
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -73,6 +76,7 @@ struct DomainRule: Codable, Equatable, Identifiable, Sendable {
         case scope
         case browser
         case profileID
+        case browserProfile
         case isEnabled
         case createdAt
         case updatedAt
@@ -91,6 +95,10 @@ struct DomainRule: Codable, Equatable, Identifiable, Sendable {
         ) ?? .exactHost
         browser = try values.decode(BrowserReference.self, forKey: .browser)
         profileID = try values.decodeIfPresent(UUID.self, forKey: .profileID)
+        browserProfile = try values.decodeIfPresent(
+            BrowserProfileChoice.self,
+            forKey: .browserProfile
+        )
         isEnabled = try values.decodeIfPresent(
             Bool.self,
             forKey: .isEnabled

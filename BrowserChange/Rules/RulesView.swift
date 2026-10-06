@@ -5,51 +5,26 @@ struct RulesView: View {
     @State private var domain = ""
     @State private var scope: DomainRuleScope = .exactHost
     @State private var browserID = ""
+    @State private var browserProfileKey = ""
     @State private var profileID: UUID?
     @State private var editingRule: DomainRule?
+    @State private var formError: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Domain rules")
-                        .font(.system(size: 30, weight: .semibold))
-                        .accessibilityIdentifier("rules-title")
-                    Text(
-                        "Exact-host rules win before parent-domain rules. Active-profile rules win before global rules."
-                    )
-                    .foregroundStyle(.secondary)
-                }
-
+        LinkpickPage(title: "Rules", identifier: "rules-title") {
+            ruleSection(title: "Everywhere", profileID: nil)
+            ForEach(store.routingConfiguration.profiles) { profile in
+                ruleSection(title: profile.name, profileID: profile.id)
+            }
+            Section("New rule") {
                 addRuleCard
-
-                if store.routingConfiguration.domainRules.isEmpty {
-                    ContentUnavailableView(
-                        "No rules yet",
-                        systemImage: "arrow.triangle.branch",
-                        description: Text(
-                            "Create one here or teach one from Link Airlock."
-                        )
-                    )
-                } else {
-                    LazyVStack(spacing: 12) {
-                        ForEach(store.routingConfiguration.domainRules) {
-                            rule in
-                            ruleCard(rule)
-                        }
-                    }
-                }
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 40)
-            .padding(.vertical, 34)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .scrollIndicators(.hidden)
         .onAppear {
-            if browserID.isEmpty {
-                browserID = store.externalBrowsers.first?.id ?? ""
-            }
+            syncBrowserSelection()
+        }
+        .onChange(of: store.externalBrowsers.map(\.id)) { _, ids in
+            syncBrowserSelection(availableIDs: ids)
         }
         .sheet(item: $editingRule) { rule in
             RuleEditView(rule: rule)
@@ -57,17 +32,15 @@ struct RulesView: View {
     }
 
     private var addRuleCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Create rule")
-                .font(.headline)
-
-            TextField("example.com", text: $domain)
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Domain or pasted link", text: $domain)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("rule-domain-field")
 
             HStack {
                 Picker("Scope", selection: $scope) {
-                    Text("Exact host").tag(DomainRuleScope.exactHost)
-                    Text("Include subdomains").tag(
+                    Text("This site").tag(DomainRuleScope.exactHost)
+                    Text("This site and subdomains").tag(
                         DomainRuleScope.includeSubdomains
                     )
                 }
@@ -78,37 +51,66 @@ struct RulesView: View {
                     }
                 }
 
-                Picker("Profile", selection: $profileID) {
-                    Text("Global").tag(UUID?.none)
+                if browserProfiles.count > 1 {
+                    Picker("Browser profile", selection: $browserProfileKey) {
+                        Text("Usual window").tag("")
+                        ForEach(browserProfiles) { profile in
+                            Text(profile.name).tag(profile.id)
+                        }
+                    }
+                    .accessibilityIdentifier("rule-browser-profile")
+                }
+
+                Picker("Put in", selection: $profileID) {
+                    Text("Everywhere").tag(UUID?.none)
                     ForEach(store.routingConfiguration.profiles) { profile in
                         Text(profile.name).tag(Optional(profile.id))
                     }
                 }
             }
 
+            if let formError {
+                Text(formError)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("rule-form-error")
+            } else if canCreateRule {
+                Text("Create a rule for this domain.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Enter a domain or paste a link.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("rule-form-hint")
+            }
+
             Button("Create rule") {
-                guard let browser = store.externalBrowsers.first(
-                    where: { $0.id == browserID }
-                ) else {
-                    return
-                }
-                if store.createRule(
-                    domain: domain,
-                    scope: scope,
-                    browser: browser.reference,
-                    profileID: profileID
-                ) != nil {
-                    domain = ""
+                submitNewRule()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canCreateRule)
+        }
+    }
+
+    private func ruleSection(title: String, profileID: UUID?) -> some View {
+        let rules = store.routingConfiguration.domainRules.filter {
+            $0.profileID == profileID
+        }
+        let inUse = store.routingConfiguration.activeProfileID == profileID
+            || profileID == nil
+        return Section {
+            if rules.isEmpty {
+                Text("No rules in \(title).")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(rules) { rule in
+                    ruleCard(rule)
                 }
             }
-            .buttonStyle(.glassProminent)
-            .disabled(
-                domain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || browserID.isEmpty
-            )
+        } header: {
+            Text(inUse ? "\(title) · in use" : title)
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func ruleCard(_ rule: DomainRule) -> some View {
@@ -117,13 +119,10 @@ struct RulesView: View {
                 Text(rule.domain)
                     .font(.body.weight(.semibold))
                     .textSelection(.enabled)
-                Text(scopeTitle(rule.scope))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Text(
-                    "\(store.displayName(for: rule.browser)) · \(profileName(rule.profileID))"
+                    "\(scopeTitle(rule.scope)) · \(store.browserChoiceLabel(rule.browser, profile: rule.browserProfile))"
                 )
-                .font(.callout)
+                .font(.caption)
                 .foregroundStyle(.secondary)
             }
 
@@ -151,25 +150,78 @@ struct RulesView: View {
                 _ = store.deleteRule(rule.id)
             }
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
         .opacity(rule.isEnabled ? 1 : 0.62)
+    }
+
+    private var browserProfiles: [BrowserProfileChoice] {
+        store.browserProfiles(for: browserID)
+    }
+
+    private var selectedBrowserProfile: BrowserProfileChoice? {
+        browserProfiles.first { $0.id == browserProfileKey }
+    }
+
+    private var selectedBrowser: InstalledBrowser? {
+        store.externalBrowsers.first(where: { $0.id == browserID })
+            ?? store.externalBrowsers.first
+    }
+
+    private var canCreateRule: Bool {
+        (try? URLNormalizer.normalizeHost(domain)) != nil
+            && selectedBrowser != nil
+    }
+
+    private func syncBrowserSelection(
+        availableIDs: [String]? = nil
+    ) {
+        let ids = availableIDs ?? store.externalBrowsers.map(\.id)
+        if browserID.isEmpty || !ids.contains(browserID) {
+            browserID = ids.first ?? ""
+            browserProfileKey = ""
+        }
+    }
+
+    private func submitNewRule() {
+        formError = nil
+        guard let host = try? URLNormalizer.normalizeHost(domain) else {
+            formError = domain.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
+                ? "Enter a domain or paste a link."
+                : "That doesn’t look like a domain."
+            return
+        }
+        guard let browser = selectedBrowser else {
+            formError = "Choose a browser first."
+            return
+        }
+        if store.createRule(
+            domain: host,
+            scope: scope,
+            browser: browser.reference,
+            profileID: profileID,
+            browserProfile: selectedBrowserProfile
+        ) != nil {
+            domain = ""
+        } else {
+            formError = store.message
+        }
     }
 
     private func scopeTitle(_ scope: DomainRuleScope) -> String {
         switch scope {
         case .exactHost:
-            "Exact host"
+            "This site"
         case .includeSubdomains:
-            "Include subdomains"
+            "This site and subdomains"
         }
     }
 
     private func profileName(_ id: UUID?) -> String {
-        guard let id else { return "Global" }
+        guard let id else { return "Everywhere" }
         return store.routingConfiguration.profiles.first {
             $0.id == id
-        }?.name ?? "Missing profile"
+        }?.name ?? "Missing rule set"
     }
 }
 
@@ -181,6 +233,7 @@ private struct RuleEditView: View {
     @State private var domain: String
     @State private var scope: DomainRuleScope
     @State private var browserID: String
+    @State private var browserProfileKey: String
     @State private var profileID: UUID?
     @State private var isEnabled: Bool
 
@@ -191,16 +244,23 @@ private struct RuleEditView: View {
         _browserID = State(
             initialValue: rule.browser.bundleIdentifier
         )
+        _browserProfileKey = State(
+            initialValue: rule.browserProfile?.id ?? ""
+        )
         _profileID = State(initialValue: rule.profileID)
         _isEnabled = State(initialValue: rule.isEnabled)
+    }
+
+    private var editBrowserProfiles: [BrowserProfileChoice] {
+        store.browserProfiles(for: browserID)
     }
 
     var body: some View {
         Form {
             TextField("Domain", text: $domain)
             Picker("Scope", selection: $scope) {
-                Text("Exact host").tag(DomainRuleScope.exactHost)
-                Text("Include subdomains").tag(
+                Text("This site").tag(DomainRuleScope.exactHost)
+                Text("This site and subdomains").tag(
                     DomainRuleScope.includeSubdomains
                 )
             }
@@ -209,8 +269,16 @@ private struct RuleEditView: View {
                     Text(browser.name).tag(browser.id)
                 }
             }
-            Picker("Profile", selection: $profileID) {
-                Text("Global").tag(UUID?.none)
+            if editBrowserProfiles.count > 1 {
+                Picker("Browser profile", selection: $browserProfileKey) {
+                    Text("Usual window").tag("")
+                    ForEach(editBrowserProfiles) { profile in
+                        Text(profile.name).tag(profile.id)
+                    }
+                }
+            }
+            Picker("Rule set", selection: $profileID) {
+                Text("Everywhere").tag(UUID?.none)
                 ForEach(store.routingConfiguration.profiles) { profile in
                     Text(profile.name).tag(Optional(profile.id))
                 }
@@ -234,6 +302,9 @@ private struct RuleEditView: View {
                         scope: scope,
                         browser: browser.reference,
                         profileID: profileID,
+                        browserProfile: editBrowserProfiles.first {
+                            $0.id == browserProfileKey
+                        },
                         isEnabled: isEnabled
                     ) {
                         dismiss()

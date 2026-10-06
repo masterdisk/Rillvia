@@ -26,6 +26,7 @@ struct RoutingConfigurationEditor {
         scope: DomainRuleScope = .exactHost,
         browser: BrowserReference,
         profileID: UUID? = nil,
+        browserProfile: BrowserProfileChoice? = nil,
         source: ConfigurationSource = .manual,
         in configuration: inout RoutingConfiguration
     ) throws -> DomainRule {
@@ -50,6 +51,7 @@ struct RoutingConfigurationEditor {
                 (matchingRules.map(\.revision).max() ?? survivor.revision) + 1
             survivor.domain = normalizedDomain
             survivor.browser = browser
+            survivor.browserProfile = browserProfile
             survivor.isEnabled = true
             survivor.updatedAt = timestamp
             survivor.source = source
@@ -64,6 +66,7 @@ struct RoutingConfigurationEditor {
                 scope: scope,
                 browser: browser,
                 profileID: profileID,
+                browserProfile: browserProfile,
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 source: source
@@ -80,6 +83,7 @@ struct RoutingConfigurationEditor {
         scope: DomainRuleScope,
         browser: BrowserReference,
         profileID: UUID?,
+        browserProfile: BrowserProfileChoice? = nil,
         isEnabled: Bool,
         in configuration: inout RoutingConfiguration
     ) throws {
@@ -101,6 +105,7 @@ struct RoutingConfigurationEditor {
         configuration.domainRules[index].scope = scope
         configuration.domainRules[index].browser = browser
         configuration.domainRules[index].profileID = profileID
+        configuration.domainRules[index].browserProfile = browserProfile
         configuration.domainRules[index].isEnabled = isEnabled
         touchRule(at: index, in: &configuration)
     }

@@ -15,21 +15,14 @@ struct RoutingSummaryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Routing summary")
-                        .font(.title3.weight(.semibold))
-                        .accessibilityIdentifier("routing-summary-title")
-                    Text("Live rules and profile state used for link predictions.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text("\(configuration.domainRules.filter(\.isEnabled).count) enabled")
-                    .font(.caption.weight(.medium))
+                Text("Rules")
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.quaternary, in: Capsule())
+                    .accessibilityIdentifier("routing-summary-title")
+                Spacer()
+                Text("\(configuration.domainRules.filter(\.isEnabled).count) on")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .contentShape(Rectangle())
             .onTapGesture {
@@ -49,36 +42,36 @@ struct RoutingSummaryView: View {
                 "Option-click to preview configuration history"
             )
 
-            SummaryRow(
-                symbol: "person.crop.circle",
-                title: "Active profile",
-                detail: activeProfileName
+            CallSheetRow(
+                title: "Rule set",
+                detail: "",
+                trailing: activeProfileName
             )
 
             if configuration.domainRules.isEmpty {
-                SummaryRow(
-                    symbol: "arrow.triangle.branch",
-                    title: "No domain rules",
-                    detail: "Unmatched links open immediately in \(store.defaultBrowserName)."
+                CallSheetRow(
+                    title: "No rules",
+                    detail: "Other links open in \(store.defaultBrowserName).",
+                    trailing: ""
                 )
             } else {
-                ForEach(configuration.domainRules.prefix(4)) { rule in
-                    SummaryRow(
-                        symbol: rule.isEnabled
-                            ? "checkmark.circle"
-                            : "pause.circle",
+                ForEach(configuration.domainRules.prefix(6)) { rule in
+                    CallSheetRow(
                         title: rule.domain,
-                        detail: "\(scopeName(rule.scope)) · \(store.displayName(for: rule.browser))\(rule.isEnabled ? "" : " · Disabled")"
+                        detail: rule.isEnabled
+                            ? scopeName(rule.scope)
+                            : "\(scopeName(rule.scope)), off",
+                        trailing: store.displayName(for: rule.browser)
                     )
                 }
             }
 
             if let item = store.airlockResult.items.first,
                let decision = store.prediction(for: item) {
-                SummaryRow(
-                    symbol: "checkmark.shield",
-                    title: "Latest Airlock prediction",
-                    detail: "\(item.normalized.host) → \(store.displayName(for: decision.target)) · \(decision.reason.summary)"
+                CallSheetRow(
+                    title: item.normalized.host,
+                    detail: decision.reason.summary,
+                    trailing: store.displayName(for: decision.target)
                 )
             }
         }
@@ -93,7 +86,7 @@ struct RoutingSummaryView: View {
               let profile = configuration.profiles.first(
                 where: { $0.id == activeProfileID }
               ) else {
-            return "Global rules only"
+            return "Everywhere"
         }
         return profile.name
     }
@@ -101,36 +94,10 @@ struct RoutingSummaryView: View {
     private func scopeName(_ scope: DomainRuleScope) -> String {
         switch scope {
         case .exactHost:
-            "Exact host"
+            "This site"
         case .includeSubdomains:
-            "Include subdomains"
+            "This site and subdomains"
         }
     }
 }
 
-private struct SummaryRow: View {
-    var symbol: String
-    var title: String
-    var detail: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 20, height: 22)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.body.weight(.medium))
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 12)
-        }
-        .padding(.vertical, 12)
-    }
-}

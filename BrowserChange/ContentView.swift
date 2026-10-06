@@ -11,7 +11,7 @@ struct ContentView: View {
                 ContentUnavailableView(
                     "No browsers found",
                     systemImage: "globe",
-                    description: Text("BrowserChange looks for apps that open http and https links.")
+                    description: Text("Linkpick looks for apps that open http and https links.")
                 )
             } else {
                 NavigationSplitView {

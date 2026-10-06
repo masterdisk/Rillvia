@@ -61,13 +61,13 @@ struct LivingBrowserHallModel: Equatable, Sendable {
                 } ?? false
                 var status: [String] = []
                 if hasActiveLease {
-                    status.append("Active browser lease")
+                    status.append("Temporary browser")
                 }
                 if browser.id == defaultBundleID {
                     status.append(
                         configuration.mode == .smart
-                            ? "Smart Routing fallback"
-                            : "Direct default"
+                            ? "Browser for sites with no rule"
+                            : "Usual browser"
                     )
                 }
                 return LivingBrowserFacts(

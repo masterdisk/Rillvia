@@ -77,6 +77,40 @@ final class SystemBrowserHandlerTests: XCTestCase {
             [.init(url: webURL, applicationURL: applicationURL)]
         )
     }
+
+    func testProfileLaunchPassesBrowserArguments() async throws {
+        let chrome = BrowserReference(bundleIdentifier: "com.google.Chrome")
+        let applicationURL = URL(fileURLWithPath: "/Applications/Google Chrome.app")
+        let webURL = URL(string: "https://teams.cloud.microsoft/")!
+        let workspace = FakeWorkspaceApplicationAccess(
+            applications: [chrome: applicationURL]
+        )
+        let handler = SystemBrowserHandler(
+            workspace: workspace,
+            browserChangeBundleIdentifier: "com.browserchange.BrowserChange"
+        )
+        let work = BrowserProfileChoice(
+            key: "Profile 1",
+            name: "Work",
+            family: .chromium
+        )
+
+        try await handler.open(webURL, with: chrome, launch: .profile(work))
+
+        XCTAssertEqual(
+            workspace.openCalls,
+            [
+                .init(
+                    url: webURL,
+                    applicationURL: applicationURL,
+                    arguments: [
+                        "--profile-directory=Profile 1",
+                        webURL.absoluteString,
+                    ]
+                ),
+            ]
+        )
+    }
 }
 
 private final class FakeWorkspaceApplicationAccess:
@@ -90,6 +124,7 @@ private final class FakeWorkspaceApplicationAccess:
     struct OpenCall: Equatable {
         var url: URL
         var applicationURL: URL
+        var arguments: [String] = []
     }
 
     var applications: [BrowserReference: URL]
@@ -127,6 +162,20 @@ private final class FakeWorkspaceApplicationAccess:
     ) async throws {
         openCalls.append(
             OpenCall(url: url, applicationURL: applicationURL)
+        )
+    }
+
+    func open(
+        _ url: URL,
+        withApplicationAt applicationURL: URL,
+        arguments: [String]
+    ) async throws {
+        openCalls.append(
+            OpenCall(
+                url: url,
+                applicationURL: applicationURL,
+                arguments: arguments
+            )
         )
     }
 }

@@ -100,7 +100,7 @@ final class LivingBrowserHallTests: XCTestCase {
         XCTAssertTrue(safariFacts.hasActiveLease)
         XCTAssertEqual(
             safariFacts.status,
-            ["Active browser lease"]
+            ["Temporary browser"]
         )
 
         let chromeFacts = try XCTUnwrap(
@@ -111,7 +111,7 @@ final class LivingBrowserHallTests: XCTestCase {
         XCTAssertFalse(chromeFacts.hasActiveLease)
         XCTAssertEqual(
             chromeFacts.status,
-            ["Smart Routing fallback"]
+            ["Browser for sites with no rule"]
         )
     }
 
@@ -125,7 +125,7 @@ final class LivingBrowserHallTests: XCTestCase {
 
         XCTAssertEqual(
             try XCTUnwrap(model.browsers.first).status,
-            ["Direct default"]
+            ["Usual browser"]
         )
         XCTAssertTrue(model.todayLine.contains("1 browser installed"))
     }

@@ -233,7 +233,7 @@ final class BrowserStoreLeaseTests: XCTestCase {
         )
         XCTAssertEqual(
             store.message,
-            "The leased browser is unavailable, so this lease is paused. Rules and the Google Chrome fallback still apply."
+            "That browser is unavailable, so the temporary switch is paused. Rules and Google Chrome still apply."
         )
         XCTAssertNotNil(store.activeBrowserLease)
         XCTAssertTrue(handler.setCalls.isEmpty)
@@ -265,7 +265,7 @@ final class BrowserStoreLeaseTests: XCTestCase {
         XCTAssertTrue(handler.setCalls.isEmpty)
         XCTAssertEqual(
             store.message,
-            "The browser lease ended. Rules and the Google Chrome fallback are active again."
+            "The temporary browser ended. Rules and Google Chrome are in use again."
         )
     }
 
@@ -286,7 +286,7 @@ final class BrowserStoreLeaseTests: XCTestCase {
         XCTAssertNil(direct.activeBrowserLease)
         XCTAssertEqual(
             direct.message,
-            "Borrow is available only while Smart Routing is active."
+            "You can use another browser for a while only while Linkpick is sending links."
         )
         XCTAssertTrue(directHandler.setCalls.isEmpty)
     }

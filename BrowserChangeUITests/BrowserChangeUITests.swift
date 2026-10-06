@@ -23,8 +23,8 @@ final class BrowserChangeUITests: XCTestCase {
             "Installed browsers should be presented in a native sidebar."
         )
         XCTAssertTrue(
-            app.staticTexts["routing-summary-title"].exists,
-            "Live routing state should remain visible but secondary."
+            app.staticTexts["routing-mode-title"].exists,
+            "The browser page should show where links open."
         )
         XCTAssertTrue(app.buttons["nav-airlock"].exists)
         XCTAssertTrue(app.buttons["nav-rules"].exists)
@@ -39,11 +39,11 @@ final class BrowserChangeUITests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
-        let safari = app.descendants(matching: .any)["Safari"].firstMatch
+        let safari = app.buttons["browser-row-Safari"]
         XCTAssertTrue(safari.exists)
         safari.click()
         XCTAssertTrue(
-            app.buttons["Make Safari the default"].waitForExistence(timeout: 2),
+            app.buttons["Make Safari the usual browser"].waitForExistence(timeout: 2),
             "Selecting another browser should reveal one clear primary action."
         )
 
@@ -92,8 +92,8 @@ final class BrowserChangeUITests: XCTestCase {
             "A split HTTP/HTTPS state should be explained in the main workspace."
         )
 
-        app.descendants(matching: .any)["Safari"].firstMatch.click()
-        let repair = app.buttons["Repair handlers with Safari"]
+        app.buttons["browser-row-Safari"].click()
+        let repair = app.buttons["Use Safari for both HTTP and HTTPS"]
         XCTAssertTrue(repair.waitForExistence(timeout: 2))
         repair.click()
 
@@ -115,7 +115,7 @@ final class BrowserChangeUITests: XCTestCase {
         app.launch()
 
         let enable = app.buttons[
-            "Turn on Smart Routing with Google Chrome"
+            "Send links through Linkpick. Otherwise use Google Chrome."
         ]
         XCTAssertTrue(enable.waitForExistence(timeout: 4))
         enable.click()
@@ -141,7 +141,7 @@ final class BrowserChangeUITests: XCTestCase {
         let always = app.checkBoxes["chooser-always"]
         XCTAssertTrue(always.waitForExistence(timeout: 2))
         always.click()
-        app.radioButtons["Include subdomains"].click()
+        app.radioButtons["This site and subdomains"].click()
         app.buttons["chooser-open-Safari"].click()
 
         app.buttons["nav-rules"].click()
@@ -149,7 +149,7 @@ final class BrowserChangeUITests: XCTestCase {
             app.staticTexts["rules-title"].waitForExistence(timeout: 2)
         )
         XCTAssertTrue(app.staticTexts["docs.example.com"].exists)
-        XCTAssertTrue(app.staticTexts["Include subdomains"].exists)
+        XCTAssertTrue(app.staticTexts["This site and subdomains"].exists)
     }
 
     func testSuccessfulDirectSwitchCanBeUndoneFromTheMainWorkspace() {
@@ -160,8 +160,8 @@ final class BrowserChangeUITests: XCTestCase {
         ]
         app.launch()
 
-        app.descendants(matching: .any)["Safari"].firstMatch.click()
-        let makeDefault = app.buttons["Make Safari the default"]
+        app.buttons["browser-row-Safari"].click()
+        let makeDefault = app.buttons["Make Safari the usual browser"]
         XCTAssertTrue(makeDefault.waitForExistence(timeout: 2))
         makeDefault.click()
 
@@ -170,7 +170,7 @@ final class BrowserChangeUITests: XCTestCase {
         undo.click()
 
         XCTAssertTrue(
-            app.buttons["Make Safari the default"].waitForExistence(timeout: 2)
+            app.buttons["Make Safari the usual browser"].waitForExistence(timeout: 2)
         )
         XCTAssertTrue(
             app.staticTexts["Restored the previous web-link handlers."]
@@ -189,38 +189,38 @@ final class BrowserChangeUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["routing-mode-title"].waitForExistence(timeout: 4)
         )
-        XCTAssertTrue(app.staticTexts["Direct"].exists)
+        XCTAssertTrue(app.staticTexts["Usual browser"].exists)
 
         let enable = app.buttons[
-            "Turn on Smart Routing with Google Chrome"
+            "Send links through Linkpick. Otherwise use Google Chrome."
         ]
         XCTAssertTrue(enable.waitForExistence(timeout: 2))
         enable.click()
 
         XCTAssertTrue(
-            app.staticTexts["Smart Routing"].waitForExistence(timeout: 2)
+            app.staticTexts["Sending links"].waitForExistence(timeout: 2)
         )
         XCTAssertTrue(
             app.buttons[
-                "Turn off Smart Routing and make Google Chrome the Direct default"
+                "Stop. Make Google Chrome the usual browser."
             ].exists
         )
 
-        app.descendants(matching: .any)["Safari"].firstMatch.click()
+        app.buttons["browser-row-Safari"].click()
         let useSafari = app.buttons[
-            "Use Safari as Smart Routing fallback"
+            "Use Safari when no rule matches"
         ]
         XCTAssertTrue(useSafari.waitForExistence(timeout: 2))
         useSafari.click()
 
         let disable = app.buttons[
-            "Turn off Smart Routing and make Safari the Direct default"
+            "Stop. Make Safari the usual browser."
         ]
         XCTAssertTrue(disable.waitForExistence(timeout: 2))
         disable.click()
 
         XCTAssertTrue(
-            app.staticTexts["Direct"].waitForExistence(timeout: 2)
+            app.staticTexts["Usual browser"].waitForExistence(timeout: 2)
         )
     }
 
@@ -235,11 +235,11 @@ final class BrowserChangeUITests: XCTestCase {
 
         let modeTitle = app.staticTexts["routing-mode-title"]
         XCTAssertTrue(modeTitle.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["Smart Routing suspended"].exists)
+        XCTAssertTrue(app.staticTexts["Link sending paused"].exists)
         XCTAssertTrue(app.staticTexts["routing-mode-detail"].exists)
         XCTAssertTrue(
             app.buttons[
-                "Turn off Smart Routing and make Google Chrome the Direct default"
+                "Stop. Make Google Chrome the usual browser."
             ].exists
         )
     }
@@ -253,7 +253,7 @@ final class BrowserChangeUITests: XCTestCase {
         app.launch()
 
         let enable = app.buttons[
-            "Turn on Smart Routing with Google Chrome"
+            "Send links through Linkpick. Otherwise use Google Chrome."
         ]
         XCTAssertTrue(enable.waitForExistence(timeout: 4))
         enable.click()
@@ -263,16 +263,13 @@ final class BrowserChangeUITests: XCTestCase {
         ]
         XCTAssertTrue(permission.waitForExistence(timeout: 2))
         XCTAssertEqual(permission.value as? Int, 0)
-        XCTAssertTrue(
-            app.staticTexts["focus-automation-guidance"].exists
-        )
 
         permission.click()
 
         XCTAssertEqual(permission.value as? Int, 1)
         XCTAssertTrue(
             app.staticTexts[
-                "Shortcuts may now start browser leases."
+                "Shortcuts can now switch browsers."
             ].waitForExistence(timeout: 2)
         )
     }
@@ -286,18 +283,18 @@ final class BrowserChangeUITests: XCTestCase {
         app.launch()
 
         let enable = app.buttons[
-            "Turn on Smart Routing with Google Chrome"
+            "Send links through Linkpick. Otherwise use Google Chrome."
         ]
         XCTAssertTrue(enable.waitForExistence(timeout: 4))
         enable.click()
 
-        app.descendants(matching: .any)["Safari"].firstMatch.click()
+        app.buttons["browser-row-Safari"].click()
         let borrow = app.descendants(matching: .any)[
             "borrow-browser-Safari"
         ]
         XCTAssertTrue(
             borrow.waitForExistence(timeout: 2),
-            "Smart Routing should expose Borrow for the selected browser."
+            "Sending links should offer a temporary browser for the selected one."
         )
         borrow.click()
         let fifteenMinutes = app.menuItems["15 minutes"]
@@ -341,12 +338,12 @@ final class BrowserChangeUITests: XCTestCase {
         app.launch()
 
         let enable = app.buttons[
-            "Turn on Smart Routing with Google Chrome"
+            "Send links through Linkpick. Otherwise use Google Chrome."
         ]
         XCTAssertTrue(enable.waitForExistence(timeout: 4))
         enable.click()
 
-        app.descendants(matching: .any)["Safari"].firstMatch.click()
+        app.buttons["browser-row-Safari"].click()
         let borrow = app.descendants(matching: .any)[
             "borrow-browser-Safari"
         ]
@@ -387,12 +384,12 @@ final class BrowserChangeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["undo-browser-lease"].exists)
         XCTAssertTrue(
             app.staticTexts[
-                "The browser lease ended. Rules and the Google Chrome fallback are active again."
+                "The temporary browser ended. Rules and Google Chrome are in use again."
             ].waitForExistence(timeout: 2)
         )
         XCTAssertTrue(
             app.buttons[
-                "Turn off Smart Routing and make Google Chrome the Direct default"
+                "Stop. Make Google Chrome the usual browser."
             ].exists
         )
 
@@ -425,30 +422,31 @@ final class BrowserChangeUITests: XCTestCase {
         app.launch()
 
         let enable = app.buttons[
-            "Turn on Smart Routing with Google Chrome"
+            "Send links through Linkpick. Otherwise use Google Chrome."
         ]
         XCTAssertTrue(enable.waitForExistence(timeout: 4))
         enable.click()
 
         let statusItem = app.statusItems[
-            "BrowserChange, Google Chrome"
+            "Linkpick, Google Chrome"
         ]
         XCTAssertTrue(statusItem.waitForExistence(timeout: 2))
         statusItem.click()
 
-        let borrow = app.descendants(matching: .any)[
-            "menu-borrow-browser"
-        ]
+        let borrow = app.buttons["menu-borrow-browser"]
         XCTAssertTrue(
             borrow.waitForExistence(timeout: 2),
-            "The menu panel should expose Borrow only in active Smart mode."
+            "The menu panel should offer a temporary browser only while Linkpick is sending links."
         )
         borrow.click()
-        let safariFifteen = app.menuItems[
-            "Borrow Safari for 15 minutes"
-        ]
-        XCTAssertTrue(safariFifteen.waitForExistence(timeout: 2))
-        safariFifteen.click()
+        let safari = app.buttons["menu-borrow-choice-Safari"]
+        XCTAssertTrue(safari.waitForExistence(timeout: 2))
+        safari.click()
+        let confirm = app.buttons["menu-borrow-confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 2))
+        XCTAssertEqual(confirm.label, "Use Safari for 15 minutes")
+        confirm.click()
+        XCTAssertTrue(app.buttons["menu-quit"].exists)
 
         XCTAssertTrue(
             app.descendants(matching: .any)[
@@ -569,7 +567,7 @@ final class BrowserChangeUITests: XCTestCase {
             app.staticTexts["hall-browser-com.google.Chrome"].exists
         )
         XCTAssertTrue(
-            app.staticTexts["Smart Routing fallback"].exists
+            app.staticTexts["Browser for sites with no rule"].exists
         )
         app.buttons["hall-era-netscape"].click()
         XCTAssertTrue(
@@ -631,7 +629,7 @@ final class BrowserChangeUITests: XCTestCase {
             app.staticTexts["profiles-title"]
                 .waitForExistence(timeout: 2)
         )
-        XCTAssertTrue(app.buttons["Create profile"].isHittable)
+        XCTAssertTrue(app.buttons["Create rule set"].isHittable)
     }
 
     func testTask7DarkLargeTextReducedMotionSmoke() {
@@ -725,7 +723,7 @@ final class BrowserChangeUITests: XCTestCase {
         )
     }
 
-    func testUnmatchedIncomingURLDispatchesToFallbackWithoutChooser() {
+    func testIncomingURLLaunchStaysWindowlessWhileRoutingToFallback() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-ApplePersistenceIgnoreState", "YES",
@@ -736,15 +734,41 @@ final class BrowserChangeUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(
-            app.staticTexts[
-                "Opened the incoming link in Google Chrome."
-            ].waitForExistence(timeout: 4)
-        )
-        XCTAssertTrue(app.staticTexts["Smart Routing"].exists)
         XCTAssertFalse(
-            app.staticTexts["browser-chooser-title"].exists,
-            "Incoming URLs must dispatch without presenting the Airlock chooser."
+            app.windows.firstMatch.waitForExistence(timeout: 3),
+            "A URL-handler launch must route in the background without presenting BrowserChange."
+        )
+    }
+
+    func testRulesWorkspaceCreatesARuleFromATypedDomain() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-testing",
+            "--force-light-appearance",
+        ]
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["workspace-title"].waitForExistence(timeout: 4)
+        )
+        app.buttons["nav-rules"].click()
+        XCTAssertTrue(
+            app.staticTexts["rules-title"].waitForExistence(timeout: 2)
+        )
+
+        let domainField = app.textFields["rule-domain-field"]
+        XCTAssertTrue(domainField.waitForExistence(timeout: 2))
+        domainField.click()
+        domainField.typeText("news.example.com")
+
+        let createRule = app.buttons["Create rule"]
+        XCTAssertTrue(createRule.isEnabled)
+        createRule.click()
+
+        XCTAssertTrue(
+            app.staticTexts["news.example.com"].waitForExistence(timeout: 2),
+            "Creating a rule must persist the typed domain in the list."
         )
     }
 
