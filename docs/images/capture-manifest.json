@@ -1,0 +1,90 @@
+[
+  {
+    "file": "overview-light.png",
+    "capture": "832D2C4E-0443-4196-B533-DCB0419BD7DE.png",
+    "test": "RillviaUITests/testOverviewAndKeyboardNavigation()",
+    "size": [
+      940,
+      680
+    ],
+    "sha256": "92bc8ff43c4b3c27069ef11bf512caa4b8062a1d7e5fb708602ca55f3b1c34e3",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  },
+  {
+    "file": "overview-dark.png",
+    "capture": "30FA13D2-DB24-4371-9AA3-62AA795E1A0D.png",
+    "test": "RillviaUITests/testDarkAppearanceAtDefaultTextSize()",
+    "size": [
+      940,
+      680
+    ],
+    "sha256": "ec06f78a58a43baf9c442c0b0515dd0b0c2e892b490de4975d2907f26e2e4233",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  },
+  {
+    "file": "preview.png",
+    "capture": "ACBA85E5-30E5-4D94-A244-DA7871E9149B.png",
+    "test": "RillviaUITests/testPreviewStaysCurrentOnlyUntilInputChanges()",
+    "size": [
+      940,
+      680
+    ],
+    "sha256": "1e92c212e89bc5caece76247301453e7afa6ac93cb9fe0fd8cdfaa32dcad8a25",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  },
+  {
+    "file": "rules.png",
+    "capture": "00FB807D-AC02-45F5-AB9F-62F5540C0C74.png",
+    "test": "RillviaUITests/testRuleDraftNeedsSaveAndGuardsNavigation()",
+    "size": [
+      940,
+      680
+    ],
+    "sha256": "4aeb5ab3c58cff12a171f3d69492f69478ef57b5b4b3fce1aafcfaced56d75bb",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  },
+  {
+    "file": "browsers.png",
+    "capture": "18E1821E-410D-4F28-84A7-429487C6DAF7.png",
+    "test": "RillviaUITests/testBrowserSelectionDoesNotChangeFallback()",
+    "size": [
+      940,
+      680
+    ],
+    "sha256": "66f0482025f82989bb425dfa13d94a7d453e09c3d3b7ddb1b80a5913e4bf1939",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  },
+  {
+    "file": "menu-bar.png",
+    "capture": "C32540A6-0C41-47D7-ADC6-C0048A68D289.png",
+    "test": "RillviaUITests/testMenuPanelShowsFullActionAndExplicitTemporarySwitch()",
+    "size": [
+      400,
+      560
+    ],
+    "sha256": "de70098f0dd15f42c231ac188e71cb56e8807121e8cd84f0b724412e23018199",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  },
+  {
+    "file": "shortcut-builder.png",
+    "capture": "93C6B1CE-4C90-4C92-A294-7ECB909A4023.png",
+    "test": "RillviaUITests/testAppScopedShortcutDoesNotRunOutsideRillviaAndDeletionCanBeUndone()",
+    "size": [
+      940,
+      680
+    ],
+    "sha256": "9c05d8f3f62042965a5c9779f42300601f969b6d3e80f201a8fc4b0647b99161",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  },
+  {
+    "file": "tutorial.png",
+    "capture": "0F01CE6E-2FD3-47AA-9A13-89F89F7E22BA.png",
+    "test": "RillviaUITests/testSettingsTutorialReplayAndKeyboardHelp()",
+    "size": [
+      940,
+      680
+    ],
+    "sha256": "1ae9f3c4a5d064eba35f63e8a5c65a7abfb4e9eb53bd4f88d300373ecfca8748",
+    "result_bundle": "build/rillvia-complete-validation.xcresult"
+  }
+]

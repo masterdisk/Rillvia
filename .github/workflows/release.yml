@@ -1,0 +1,105 @@
+name: Prepare release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      RILLVIA_TAG: ${{ github.ref_name }}
+      RILLVIA_BUILD: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release tag
+        run: |
+          [[ "$RILLVIA_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 2
+          git merge-base --is-ancestor HEAD origin/main
+          printf 'RILLVIA_VERSION=%s\n' "${RILLVIA_TAG#v}" >> "$GITHUB_ENV"
+      - name: Test
+        run: |
+          xcodebuild test -project Rillvia.xcodeproj -scheme Rillvia \
+            -destination 'platform=macOS' -derivedDataPath build/ReleaseTests \
+            -parallel-testing-enabled NO -only-testing:RillviaTests
+      - name: Prepare signing
+        env:
+          RILLVIA_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          RILLVIA_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          RILLVIA_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          RILLVIA_APPLE_ID: ${{ secrets.APPLE_ID }}
+          RILLVIA_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          RILLVIA_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RILLVIA_CERTIFICATE$RILLVIA_IDENTITY$RILLVIA_APPLE_ID$RILLVIA_APP_PASSWORD$RILLVIA_TEAM_ID" ]]; then
+            printf 'No signing credentials configured. Preparing an ad hoc build.\n'
+            exit 0
+          fi
+          [[ -n "$RILLVIA_CERTIFICATE" && -n "$RILLVIA_CERTIFICATE_PASSWORD" && -n "$RILLVIA_IDENTITY" ]] || {
+            printf 'Configure all three certificate secrets before signing.\n' >&2; exit 2;
+          }
+          RILLVIA_KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          printf '::add-mask::%s\n' "$RILLVIA_KEYCHAIN_PASSWORD"
+          RILLVIA_KEYCHAIN="$RUNNER_TEMP/rillvia-signing.keychain-db"
+          printf '%s' "$RILLVIA_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/rillvia-signing.p12"
+          security create-keychain -p "$RILLVIA_KEYCHAIN_PASSWORD" "$RILLVIA_KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$RILLVIA_KEYCHAIN"
+          security unlock-keychain -p "$RILLVIA_KEYCHAIN_PASSWORD" "$RILLVIA_KEYCHAIN"
+          security import "$RUNNER_TEMP/rillvia-signing.p12" -k "$RILLVIA_KEYCHAIN" \
+            -P "$RILLVIA_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$RILLVIA_KEYCHAIN_PASSWORD" "$RILLVIA_KEYCHAIN"
+          security list-keychains -d user -s "$RILLVIA_KEYCHAIN"
+          printf 'RILLVIA_SIGNING_IDENTITY=%s\n' "$RILLVIA_IDENTITY" >> "$GITHUB_ENV"
+          if [[ -n "$RILLVIA_APPLE_ID$RILLVIA_APP_PASSWORD$RILLVIA_TEAM_ID" ]]; then
+            [[ -n "$RILLVIA_APPLE_ID" && -n "$RILLVIA_APP_PASSWORD" && -n "$RILLVIA_TEAM_ID" ]] || {
+              printf 'Configure all three notarization secrets.\n' >&2; exit 2;
+            }
+            xcrun notarytool store-credentials rillvia-ci --keychain "$RILLVIA_KEYCHAIN" \
+              --apple-id "$RILLVIA_APPLE_ID" --password "$RILLVIA_APP_PASSWORD" --team-id "$RILLVIA_TEAM_ID"
+            printf 'RILLVIA_NOTARY_PROFILE=rillvia-ci\n' >> "$GITHUB_ENV"
+            printf 'RILLVIA_NOTARY_KEYCHAIN=%s\n' "$RILLVIA_KEYCHAIN" >> "$GITHUB_ENV"
+          fi
+      - name: Build universal DMG
+        run: scripts/build-dmg.sh
+      - name: Prepare release notes
+        run: |
+          cat > build/dist/release-notes.md <<'NOTES'
+          Requires macOS 26 or later. This DMG contains a universal app for Apple silicon and Intel Macs.
+
+          Drag Rillvia to Applications to install it. Existing rules, rule sets, and shortcuts carry over.
+          Future updates are available in Settings > Updates. Download first, then choose Install and restart.
+          NOTES
+          if [[ -n "${RILLVIA_NOTARY_PROFILE:-}" ]]; then
+            printf '\nSigned with Developer ID and notarized by Apple.\n' >> build/dist/release-notes.md
+          else
+            printf '\nThis build has not been notarized. Configure the Apple signing and notarization secrets before distributing it outside your development setup.\n' >> build/dist/release-notes.md
+          fi
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RILLVIA_TAG" build/dist/*.dmg build/dist/*.sha256 \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "Rillvia $RILLVIA_VERSION" --notes-file build/dist/release-notes.md
+      - name: Remove temporary signing files
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/rillvia-signing.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/rillvia-signing.keychain-db"
+          fi
+          rm -f "$RUNNER_TEMP/rillvia-signing.p12"

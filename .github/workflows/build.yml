@@ -1,0 +1,64 @@
+name: Build Rillvia
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_ui_tests:
+        description: Run native UI tests (requires UI automation on the runner)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Test
+        run: |
+          xcodebuild test -project Rillvia.xcodeproj -scheme Rillvia \
+            -destination 'platform=macOS' -derivedDataPath build/CIDerivedData \
+            -parallel-testing-enabled NO -only-testing:RillviaTests \
+            -resultBundlePath build/ci-unit.xcresult
+      - name: Test native controls
+        if: github.event_name == 'workflow_dispatch' && inputs.run_ui_tests
+        run: |
+          xcodebuild test -project Rillvia.xcodeproj -scheme Rillvia \
+            -destination 'platform=macOS' -derivedDataPath build/CIDerivedData \
+            -parallel-testing-enabled NO -only-testing:RillviaUITests \
+            -resultBundlePath build/ci-ui.xcresult
+      - name: Build universal DMG
+        env:
+          RILLVIA_BUILD: ${{ github.run_number }}
+        run: scripts/build-dmg.sh
+      - name: Save installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Rillvia-universal-${{ github.run_number }}
+          path: |
+            build/dist/*.dmg
+            build/dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Save test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Rillvia-tests-${{ github.run_number }}
+          path: build/ci-*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
