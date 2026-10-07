@@ -6,6 +6,11 @@ struct TapGate {
     private var count = 0
     private var last: Date?
 
+    init(threshold: Int, interval: TimeInterval) {
+        self.threshold = threshold
+        self.interval = interval
+    }
+
     mutating func tap(at date: Date) -> Bool {
         if let last, date.timeIntervalSince(last) > interval {
             count = 0
@@ -26,6 +31,11 @@ struct CharacterSequence {
     var gap: TimeInterval
     private var progress = ""
     private var last: Date?
+
+    init(target: String, gap: TimeInterval) {
+        self.target = target
+        self.gap = gap
+    }
 
     mutating func consume(_ raw: String, at date: Date) -> Bool {
         guard raw.count == 1, let character = raw.lowercased().first, character.isLetter else {
