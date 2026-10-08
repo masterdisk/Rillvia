@@ -30,7 +30,7 @@
   </picture>
 </p>
 
-<p align="center"><sub>Native app screenshots with sample rules. The overview follows your browser's light or dark appearance.</sub></p>
+<p align="center"><sub>Native app screenshots with sample rules, captured 7 October 2026. The overview follows your browser's light or dark appearance. <a href="reviews/2026-10-08-quiet-controls/README.md">Latest control refinements</a>.</sub></p>
 
 ## Features
 
@@ -45,9 +45,9 @@ Use Chrome for work, Safari for reading, and a separate browser for personal lin
 | **Custom shortcuts** | Record keys for browsers, rule sets, temporary switches, and clipboard previews. They can work from any app. |
 | **Undo and history** | Save rule edits when you're ready. Undo deletions and inspect earlier configurations without changing your current rules. |
 | **Updates on your terms** | Check for a new version in Settings. Download it first, then choose when to install and restart. |
-| **Readable controls** | Increase text to 200%. Keyboard focus stays visible, and glass controls follow Reduce Transparency. |
+| **Readable controls** | Increase text to 200%. Solid controls share a clear keyboard-focus outline in light and dark appearances. |
 
-The daily controls live in the menu bar. Open the workspace when you want to edit rules, preview a link, or change settings. Light and dark appearances, native glass controls, and keyboard navigation keep it at home on your Mac.
+The daily controls live in the menu bar. Open the workspace when you want to edit rules, preview a link, or change settings. Native buttons, readable fields, and keyboard navigation keep it at home on your Mac.
 
 ## Screenshots
 

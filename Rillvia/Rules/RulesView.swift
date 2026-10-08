@@ -20,12 +20,12 @@ struct RulesView: View {
                         Text("\(rules.count) \(rules.count == 1 ? "rule" : "rules")").foregroundStyle(AppColors.secondaryText)
                     }
                     Spacer(minLength: 5)
-                    Button("New rule", systemImage: "plus") { newRule() }.labelStyle(.iconOnly).modifier(AccessibleGlassStyle()).controlSize(.large)
+                    Button("New rule", systemImage: "plus") { newRule() }.labelStyle(.iconOnly).modifier(AccessibleButtonStyle()).controlSize(.large)
                         .help("New rule (⌘N)").accessibilityIdentifier("new-rule")
                 }
-                TextField("Search rules", text: $workspace.ruleSearch).textFieldStyle(.roundedBorder).focused($searchFocused).accessibilityIdentifier("rule-search")
+                AppTextField("Search rules", text: $workspace.ruleSearch, focus: $searchFocused).accessibilityIdentifier("rule-search")
                 if let profileID = workspace.browsedProfileID, store.routingConfiguration.activeProfileID != profileID {
-                    Button("Make \(setName) active") { _ = store.selectProfile(profileID) }.modifier(AccessibleGlassStyle())
+                    Button("Make \(setName) active") { _ = store.selectProfile(profileID) }.modifier(AccessibleButtonStyle())
                         .accessibilityIdentifier("activate-browsed-rule-set")
                 }
                 if rules.isEmpty {
@@ -120,7 +120,7 @@ struct RuleDraftEditor: View {
                 PageHeading(title: draft.id == nil ? "New rule" : draft.normalizedDomain ?? draft.domain, subtitle: "Rule in \(setName)", identifier: "rule-editor-title")
                 Divider()
                 FieldCaption(title: "Domain") {
-                    TextField("example.com or a full URL", text: $draft.domain).textFieldStyle(.roundedBorder).controlSize(.large).accessibilityIdentifier("rule-domain")
+                    AppTextField("example.com or a full URL", text: $draft.domain).accessibilityIdentifier("rule-domain")
                     if !draft.domain.isEmpty, draft.normalizedDomain == nil {
                         Text("Enter a valid domain or an HTTP or HTTPS link.").appFont(.callout).foregroundStyle(AppColors.errorText)
                     } else if let normalized = draft.normalizedDomain, normalized != draft.domain {
@@ -172,8 +172,8 @@ struct RuleDraftEditor: View {
                 if let error { Text(error).foregroundStyle(AppColors.errorText).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rule-save-error") }
                 HStack(spacing: 12) {
                     Spacer(minLength: 0)
-                    Button("Cancel") { store.workspace.cancelRule(); error = nil }.modifier(AccessibleGlassStyle()).controlSize(.large)
-                    Button(draft.id == nil ? "Save rule" : "Save changes", action: save).modifier(AccessibleGlassStyle(prominent: true)).controlSize(.large)
+                    Button("Cancel") { store.workspace.cancelRule(); error = nil }.modifier(AccessibleButtonStyle()).controlSize(.large)
+                    Button(draft.id == nil ? "Save rule" : "Save changes", action: save).modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large)
                         .keyboardShortcut("s").disabled(!isValid || !store.workspace.hasUnsavedRule).accessibilityIdentifier("save-rule")
                 }
                 StoreNotice()
@@ -205,8 +205,8 @@ struct RuleSetsSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             PageHeading(title: "Rule sets", subtitle: "Group rules for work, home, or anything else. Browsing a set does not make it active.")
             HStack {
-                TextField("New rule set name", text: $newName).textFieldStyle(.roundedBorder)
-                Button("Create") { if store.createProfile(named: newName) != nil { newName = "" } }.disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                AppTextField("New rule set name", text: $newName)
+                Button("Create") { if store.createProfile(named: newName) != nil { newName = "" } }.modifier(AccessibleButtonStyle()).controlSize(.large).disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             ScrollView {
                 VStack(spacing: 12) {
@@ -214,7 +214,7 @@ struct RuleSetsSheet: View {
                 }
             }.frame(maxHeight: 230)
             StoreNotice()
-            HStack { Spacer(); Button("Done") { dismiss() }.modifier(AccessibleGlassStyle(prominent: true)).keyboardShortcut(.cancelAction) }
+            HStack { Spacer(); Button("Done") { dismiss() }.modifier(AccessibleButtonStyle(prominent: true)).keyboardShortcut(.cancelAction) }
         }.padding(28).frame(width: 540)
     }
 }
@@ -226,8 +226,8 @@ private struct RuleSetEditRow: View {
     init(profile: RoutingProfile) { self.profile = profile; _name = State(initialValue: profile.name) }
     var body: some View {
         HStack {
-            TextField("Rule set name", text: $name).textFieldStyle(.roundedBorder)
-            Button("Rename") { _ = store.renameProfile(profile.id, to: name) }.disabled(name == profile.name || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            AppTextField("Rule set name", text: $name)
+            Button("Rename") { _ = store.renameProfile(profile.id, to: name) }.modifier(AccessibleButtonStyle()).controlSize(.large).disabled(name == profile.name || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Menu {
                 Button("Delete set and its rules", role: .destructive) { _ = store.deleteProfile(profile.id) }
             } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Options for \(profile.name)")

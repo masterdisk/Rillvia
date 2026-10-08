@@ -69,7 +69,7 @@ struct DiagnosticsView: View {
         ) {
             didCopy = store.diagnosticsSnapshot.copy()
         }
-        .modifier(AccessibleGlassStyle(prominent: true))
+        .modifier(AccessibleButtonStyle(prominent: true))
         .accessibilityIdentifier("copy-diagnostics")
         .accessibilityValue(didCopy ? "Copied" : "Not copied")
     }

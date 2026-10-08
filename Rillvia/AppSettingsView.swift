@@ -20,7 +20,7 @@ struct AppSettingsView: View {
                         RoutingStatus()
                         Button(store.isSmartRoutingActive ? "Turn off rules" : "Turn on rules") {
                             Task { if store.isSmartRoutingActive { await store.disableSmartRouting() } else { await store.enableSmartRouting() } }
-                        }.modifier(AccessibleGlassStyle()).controlSize(.small).disabled(store.isSwitching).accessibilityIdentifier("settings-routing-toggle")
+                        }.modifier(AccessibleButtonStyle()).controlSize(.small).disabled(store.isSwitching).accessibilityIdentifier("settings-routing-toggle")
                     }.padding(.top, 5)
                 }
                 settingsSection("General") {
@@ -76,7 +76,7 @@ struct AppSettingsView: View {
                             Text("Review your browsers and first rule.").appFont(.callout).foregroundStyle(AppColors.secondaryText)
                         }
                         Spacer(minLength: 8)
-                        Button("Start tutorial") { store.workspace.showTutorial = true }.modifier(AccessibleGlassStyle()).accessibilityIdentifier("replay-tutorial")
+                        Button("Start tutorial") { store.workspace.showTutorial = true }.modifier(AccessibleButtonStyle()).accessibilityIdentifier("replay-tutorial")
                     }
                     Divider()
                     HStack {
@@ -85,7 +85,7 @@ struct AppSettingsView: View {
                             Text("Check link handlers and saved settings.").appFont(.callout).foregroundStyle(AppColors.secondaryText)
                         }
                         Spacer(minLength: 8)
-                        Button("Open") { store.openDiagnostics() }.modifier(AccessibleGlassStyle()).accessibilityLabel("Open diagnostics")
+                        Button("Open") { store.openDiagnostics() }.modifier(AccessibleButtonStyle()).accessibilityLabel("Open diagnostics")
                     }
                     Divider()
                     HStack {
@@ -115,7 +115,6 @@ struct AppSettingsView: View {
             VStack(alignment: .leading, spacing: 12, content: content)
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor), lineWidth: 0.6))
         }
     }
     private func settingsField<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -176,7 +175,7 @@ struct KeyboardShortcutsView: View {
             HStack {
                 Button("Customize shortcuts") { dismiss(); store.navigate(to: .settings) }.buttonStyle(.link).tint(AppColors.linkText).accentColor(AppColors.linkText)
                 Spacer()
-                Button("Done") { dismiss() }.modifier(AccessibleGlassStyle(prominent: true)).keyboardShortcut(.cancelAction)
+                Button("Done") { dismiss() }.modifier(AccessibleButtonStyle(prominent: true)).keyboardShortcut(.cancelAction)
             }
         }.padding(28).frame(width: 520, height: 600)
     }

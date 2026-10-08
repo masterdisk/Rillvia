@@ -121,7 +121,7 @@ struct TemporaryBrowserSheet: View {
                 Button(duration.actionTitle(browserName: chosen?.name ?? "a browser")) {
                     if let chosen, store.borrowBrowser(chosen, for: duration) { dismiss() }
                 }
-                .modifier(AccessibleGlassStyle(prominent: true)).keyboardShortcut(.defaultAction)
+                .modifier(AccessibleButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)
                 .disabled(chosen == nil || !store.isSmartRoutingActive)
                 .accessibilityIdentifier("start-temporary-browser")
             }
@@ -183,8 +183,6 @@ struct SelectorChoice: Identifiable {
 }
 
 struct WideSelector: View {
-    @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.rillviaIncreaseContrastOverride) private var testingIncreasedContrast
     @Environment(\.rillviaTextScale) private var textScale
     private var iconSize: CGFloat { 24 * textScale }
     let label: String
@@ -205,8 +203,7 @@ struct WideSelector: View {
                 Spacer(minLength: 10)
                 Image(systemName: "chevron.down").appFont(size: 12, weight: .semibold).foregroundStyle(AppColors.secondaryText).accessibilityHidden(true)
             }.padding(.horizontal, 12).padding(.vertical, 10).frame(minHeight: 44 * textScale).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(triggerFocused ? Color.primary : contrast == .increased || testingIncreasedContrast ? Color.primary : AppColors.controlBorder, lineWidth: triggerFocused ? 2 : 1))
+                .modifier(ControlSurface(isFocused: triggerFocused))
         }.buttonStyle(.plain).accessibilityLabel(label).accessibilityValue(current?.title ?? "Choose a browser")
             .focusable().focusEffectDisabled().focused($triggerFocused)
             .accessibilityHint("Opens choices. Use arrow keys to move, Return to choose, and Escape to close.")
@@ -242,7 +239,7 @@ struct WideSelector: View {
             }.padding(.horizontal, 10).padding(.vertical, 10).frame(minHeight: 44)
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 .background(option.id == selectedID ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focusedChoice == option.id ? Color.primary : .clear, lineWidth: 2))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focusedChoice == option.id ? AppColors.focusRing : .clear, lineWidth: 2).allowsHitTesting(false))
         }.buttonStyle(.plain)
             .accessibilityLabel(option.title).accessibilityAddTraits(option.id == selectedID ? [.isSelected] : [])
             .accessibilityIdentifier("selector-choice-\(option.id)")

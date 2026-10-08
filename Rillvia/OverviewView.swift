@@ -26,12 +26,12 @@ struct OverviewView: View {
                             Text("Use a browser temporarily").fixedSize(horizontal: false, vertical: true)
                             ShortcutHint(keys: "⌘T")
                         }.frame(minHeight: 32)
-                    }.modifier(AccessibleGlassStyle()).buttonBorderShape(.capsule).controlSize(.large)
+                    }.modifier(AccessibleButtonStyle()).controlSize(.large)
                         .accessibilityIdentifier("temporary-browser")
                 } else {
                     VStack(alignment: .leading, spacing: 9) {
                         Button("Turn on rules") { Task { await store.enableSmartRouting() } }
-                            .modifier(AccessibleGlassStyle(prominent: true)).controlSize(.large).disabled(store.isSwitching || store.externalBrowsers.isEmpty)
+                            .modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large).disabled(store.isSwitching || store.externalBrowsers.isEmpty)
                             .accessibilityIdentifier("enable-rules")
                         Text(store.isSmartRoutingConfigured ? store.routingModeDetail : "macOS will ask to let Rillvia handle web links. Your chosen browser opens links without a matching rule.")
                             .appFont(.callout).foregroundStyle(AppColors.secondaryText).fixedSize(horizontal: false, vertical: true)

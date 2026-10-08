@@ -2,6 +2,8 @@
 
 These are captures of the native SwiftUI app with isolated sample data, not generated design mockups. Images are copied without cropping, resizing, or repainting.
 
+The gallery was captured on 7 October 2026, before the solid-control refinement. [The 8 October review](../../reviews/2026-10-08-quiet-controls/README.md) shows the newer shared controls in offscreen renders. Fresh full-app captures are deferred until interactive review is welcome.
+
 | Image | Native source | Size in pixels |
 | --- | --- | --- |
 | `overview-light.png` | `testOverviewAndKeyboardNavigation` | 940 × 680 |

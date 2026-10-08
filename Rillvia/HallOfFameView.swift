@@ -163,7 +163,7 @@ struct HallOfFameView: View {
                 Button("Back to the present") {
                     dismiss()
                 }
-                .modifier(AccessibleGlassStyle())
+                .modifier(AccessibleButtonStyle())
                 .keyboardShortcut(.cancelAction)
                 .padding(.top, 4)
             }

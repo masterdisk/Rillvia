@@ -11,7 +11,7 @@ struct BrowsersView: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 17) {
                 PageHeading(title: "Browsers", subtitle: "\(store.externalBrowsers.count) installed", identifier: "browsers-title")
-                TextField("Search browsers", text: $workspace.browserSearch).textFieldStyle(.roundedBorder).focused($searchFocused).accessibilityIdentifier("browser-search")
+                AppTextField("Search browsers", text: $workspace.browserSearch, focus: $searchFocused).accessibilityIdentifier("browser-search")
                 ScrollView {
                     VStack(spacing: 5) {
                         ForEach(listedBrowsers.filter { workspace.browserSearch.isEmpty || $0.name.localizedCaseInsensitiveContains(workspace.browserSearch) }) { browser in
@@ -26,7 +26,7 @@ struct BrowsersView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         BrowserIcon(browser: browser, size: 52)
                         PageHeading(title: "Lynx", subtitle: "Text only. A little nod to the terminal.", identifier: "lynx-title")
-                        Button("Back to browsers") { if let first = store.externalBrowsers.first { store.selectBrowser(first.id) } }.modifier(AccessibleGlassStyle())
+                        Button("Back to browsers") { if let first = store.externalBrowsers.first { store.selectBrowser(first.id) } }.modifier(AccessibleButtonStyle())
                         StoreNotice()
                         Spacer()
                     }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
@@ -78,10 +78,10 @@ private struct BrowserDetailsView: View {
                             Text(store.isSmartRoutingConfigured ? "Choose this browser for links without a matching rule." : "Choose the macOS default for HTTP and HTTPS links.")
                                 .foregroundStyle(AppColors.secondaryText).fixedSize(horizontal: false, vertical: true)
                             Button(store.isSmartRoutingConfigured ? "Use for other links" : "Make \(browser.name) default") { Task { await store.makeDefault(browser) } }
-                                .modifier(AccessibleGlassStyle(prominent: true)).controlSize(.large).disabled(store.isSwitching || isCurrent(browser))
+                                .modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large).disabled(store.isSwitching || isCurrent(browser))
                                 .accessibilityIdentifier("use-selected-browser")
                             Button("Use a browser temporarily") { store.workspace.showTemporaryBrowser = true }
-                                .modifier(AccessibleGlassStyle()).controlSize(.large).disabled(!store.isSmartRoutingActive)
+                                .modifier(AccessibleButtonStyle()).controlSize(.large).disabled(!store.isSmartRoutingActive)
                         }
                         if store.hasSplitHandlers, let splitMessage = store.splitHandlerMessage {
                             Text(splitMessage).foregroundStyle(AppColors.warningText).accessibilityIdentifier("split-handler-warning")

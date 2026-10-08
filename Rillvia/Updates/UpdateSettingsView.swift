@@ -16,7 +16,7 @@ struct UpdateSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Button("Check for updates") { Task { await updates.check() } }
-                    .modifier(AccessibleGlassStyle()).disabled(updates.phase.isBusy).accessibilityIdentifier("check-for-updates")
+                    .modifier(AccessibleButtonStyle()).disabled(updates.phase.isBusy).accessibilityIdentifier("check-for-updates")
             }
             switch updates.phase {
             case .idle: EmptyView()
@@ -27,7 +27,7 @@ struct UpdateSettingsView: View {
                 Text("Rillvia \(release.version) is available.").fontWeight(.medium).accessibilityIdentifier("update-status")
                 HStack(spacing: 12) {
                     if release.asset != nil {
-                        Button("Download update") { Task { await updates.download() } }.modifier(AccessibleGlassStyle(prominent: true)).accessibilityIdentifier("download-update")
+                        Button("Download update") { Task { await updates.download() } }.modifier(AccessibleButtonStyle(prominent: true)).accessibilityIdentifier("download-update")
                     } else { Text("The installer is not ready yet.").appFont(.callout).foregroundStyle(AppColors.secondaryText) }
                     Button("Release notes") { NSWorkspace.shared.open(release.url) }.buttonStyle(.link).tint(AppColors.linkText).accentColor(AppColors.linkText)
                 }
@@ -77,7 +77,7 @@ struct UpdateSettingsView: View {
             .accessibilityIdentifier("update-status")
     }
     @ViewBuilder private func installActions(_ file: URL) -> some View {
-        Button("Install and restart") { confirmInstall = true }.modifier(AccessibleGlassStyle(prominent: true))
+        Button("Install and restart") { confirmInstall = true }.modifier(AccessibleButtonStyle(prominent: true))
             .disabled(store.workspace.hasUnsavedRule || store.isSwitching || store.shortcuts.isEditing)
             .accessibilityIdentifier("install-update")
         Button("Open installer") { NSWorkspace.shared.open(file) }.buttonStyle(.link).tint(AppColors.linkText).accentColor(AppColors.linkText)

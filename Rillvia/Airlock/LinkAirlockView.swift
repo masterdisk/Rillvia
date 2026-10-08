@@ -50,13 +50,10 @@ struct PreviewInputSection: View {
                 }
             }
             HStack(alignment: .top, spacing: 10) {
-                TextField("https://example.com", text: $workspace.previewInput, axis: compact ? .horizontal : .vertical)
-                    .textFieldStyle(.plain).padding(12)
-                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(urlIsFocused ? Color.primary : AppColors.controlBorder, lineWidth: urlIsFocused ? 2 : 1))
-                    .focused($urlIsFocused).onSubmit(preview)
+                AppTextField("https://example.com", text: $workspace.previewInput, axis: compact ? .horizontal : .vertical, focus: $urlIsFocused)
+                    .onSubmit(preview)
                     .accessibilityLabel("Link to preview").accessibilityIdentifier("airlock-input")
-                Button(action: preview) { Text("Preview").frame(minWidth: 100, minHeight: 24) }.modifier(AccessibleGlassStyle(prominent: true)).controlSize(.large)
+                Button(action: preview) { Text("Preview").frame(minWidth: 100, minHeight: 24) }.modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large)
                     .disabled(workspace.previewInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("airlock-preview")
             }
@@ -155,7 +152,7 @@ struct PreviewResultCard: View {
             let revision = store.revision
             Task { _ = await store.openPreview(item, expected: decision, revision: revision); isOpening = false }
         }
-        .modifier(AccessibleGlassStyle(prominent: true)).controlSize(.large)
+        .modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large)
         .keyboardShortcut(store.airlockResult.items.count == 1 ? KeyboardShortcut(.return, modifiers: .command) : nil)
         .disabled(decision == nil || isOpening || !store.workspace.previewIsCurrent(revision: store.revision))
         .accessibilityIdentifier("airlock-open-now")
@@ -163,7 +160,7 @@ struct PreviewResultCard: View {
             Button("Edit rule") { store.editRule(ruleID) }.buttonStyle(.link).tint(AppColors.linkText).accentColor(AppColors.linkText).accessibilityIdentifier("airlock-edit-rule")
         }
         if !compact {
-            Button("Choose another browser") { store.workspace.chooserItem = item }.modifier(AccessibleGlassStyle()).controlSize(.large)
+            Button("Choose another browser") { store.workspace.chooserItem = item }.modifier(AccessibleButtonStyle()).controlSize(.large)
                 .accessibilityIdentifier("airlock-open-in")
         }
     }
@@ -202,7 +199,7 @@ struct BrowserChooserView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             PageHeading(title: "Choose a browser", subtitle: item.normalized.host, identifier: "airlock-chooser-title")
-            TextField("Search browsers", text: $search).textFieldStyle(.roundedBorder).focused($searchFocused)
+            AppTextField("Search browsers", text: $search, focus: $searchFocused)
             ScrollView {
                 VStack(spacing: 5) {
                     ForEach(store.externalBrowsers.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { browser in
@@ -244,7 +241,7 @@ struct BrowserChooserView: View {
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(isOpening)
                 Spacer()
-                Button("Open in \(selected?.name ?? "browser")") { open() }.modifier(AccessibleGlassStyle(prominent: true))
+                Button("Open in \(selected?.name ?? "browser")") { open() }.modifier(AccessibleButtonStyle(prominent: true))
                     .keyboardShortcut(.defaultAction).disabled(selected == nil || isOpening).accessibilityIdentifier("chooser-open")
             }
         }.padding(28).frame(width: 510)

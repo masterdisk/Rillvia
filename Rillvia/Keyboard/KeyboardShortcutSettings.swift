@@ -19,7 +19,7 @@ struct KeyboardShortcutSettings: View {
                     var binding = ShortcutBinding()
                     binding.action.browserID = store.externalBrowsers.first { $0.id == "com.google.Chrome" }?.id ?? store.externalBrowsers.first?.id ?? ""
                     editing = binding
-                }.modifier(AccessibleGlassStyle()).disabled(store.shortcuts.loadError != nil).accessibilityIdentifier("add-keyboard-shortcut")
+                }.modifier(AccessibleButtonStyle()).disabled(store.shortcuts.loadError != nil).accessibilityIdentifier("add-keyboard-shortcut")
             }
             if let loadError = store.shortcuts.loadError {
                 Text(loadError).appFont(.callout).foregroundStyle(AppColors.errorText).fixedSize(horizontal: false, vertical: true)
@@ -100,7 +100,7 @@ private struct KeyboardShortcutEditor: View {
                             Button { recording.toggle() } label: {
                                 Label(recording ? "Press your keys…" : draft.chord?.display ?? "Record shortcut", systemImage: "keyboard")
                                     .appFont(size: 17, weight: .medium, design: .monospaced).frame(minHeight: 24)
-                            }.modifier(AccessibleGlassStyle()).controlSize(.large).accessibilityIdentifier("record-shortcut")
+                            }.modifier(AccessibleButtonStyle()).controlSize(.large).accessibilityIdentifier("record-shortcut")
                             if draft.chord != nil, !recording { Button("Clear") { draft.chord = nil }.buttonStyle(.link).tint(AppColors.linkText).accentColor(AppColors.linkText) }
                         }
                         Text(recording ? "Press a combination with ⌘ or ⌃. Esc stops recording." : "Click Record shortcut, then press the keys together. Try ⌃⌥⇧C.")
@@ -161,7 +161,7 @@ private struct KeyboardShortcutEditor: View {
                     recording = false
                     if let problem = store.shortcuts.save(draft) { error = problem }
                     else { dismiss() }
-                }.modifier(AccessibleGlassStyle(prominent: true)).keyboardShortcut(.defaultAction)
+                }.modifier(AccessibleButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)
                     .disabled(recording || draft.chord == nil || store.shortcuts.problem(for: draft) != nil || error != nil)
                     .accessibilityIdentifier("save-keyboard-shortcut")
             }

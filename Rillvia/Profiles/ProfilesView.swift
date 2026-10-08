@@ -8,14 +8,13 @@ struct ProfilesView: View {
         RillviaPage(title: "Rule sets", identifier: "profiles-title") {
             Section {
                 HStack {
-                    TextField("Rule set name", text: $newName)
-                        .textFieldStyle(.roundedBorder)
+                    AppTextField("Rule set name", text: $newName)
                     Button("Create rule set") {
                         if store.createProfile(named: newName) != nil {
                             newName = ""
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .modifier(AccessibleButtonStyle()).controlSize(.large)
                     .disabled(
                         newName.trimmingCharacters(
                             in: .whitespacesAndNewlines
@@ -67,12 +66,12 @@ private struct ProfileRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                TextField("Rule set name", text: $name)
-                    .textFieldStyle(.roundedBorder)
+                AppTextField("Rule set name", text: $name)
 
                 Button("Rename") {
                     _ = store.renameProfile(profile.id, to: name)
                 }
+                .modifier(AccessibleButtonStyle()).controlSize(.large)
                 .disabled(
                     name.trimmingCharacters(
                         in: .whitespacesAndNewlines

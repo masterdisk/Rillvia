@@ -56,7 +56,7 @@ struct IntroView: View {
                                 await store.enableSmartRouting()
                                 if store.isSmartRoutingActive, let chosen = store.externalBrowsers.first(where: { $0.id == fallbackID }) { await store.makeDefault(chosen) }
                             }
-                        }.modifier(AccessibleGlassStyle(prominent: true)).disabled(store.isSwitching)
+                        }.modifier(AccessibleButtonStyle(prominent: true)).disabled(store.isSwitching)
                         Text("macOS will ask to let Rillvia handle web links. You can turn rules off at any time.").appFont(.callout).foregroundStyle(AppColors.secondaryText)
                     } else { Text("Rules are already on. Your saved choices are ready.").foregroundStyle(AppColors.secondaryText) }
                 case 2:
@@ -64,14 +64,14 @@ struct IntroView: View {
                     Text("Use rule sets for Work or Personal. Shared rules apply alongside the active set.").foregroundStyle(AppColors.secondaryText)
                 case 3:
                     Text("Preview shows the browser and rule before opening. It does not visit the link.")
-                    TextField("A link to try", text: $sampleURL).textFieldStyle(.roundedBorder)
+                    AppTextField("A link to try", text: $sampleURL)
                     Button("Preview this link") {
                         store.workspace.previewInput = sampleURL
                         store.stageAirlock(text: sampleURL)
                         store.workspace.markPreview(input: sampleURL, revision: store.revision)
                         store.workspaceDestination = .airlock
                         finish()
-                    }.modifier(AccessibleGlassStyle())
+                    }.modifier(AccessibleButtonStyle())
                 default:
                     Text("Use one browser for 15, 30, or 60 minutes—or until you stop. Your rules resume when the temporary choice ends.")
                     Text("Find it in the menu bar or press ⌘T. Press ⌘1–4 to move between pages, and ⌘/ for all keyboard shortcuts.").foregroundStyle(AppColors.secondaryText)
@@ -81,10 +81,10 @@ struct IntroView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack {
-                Button(step == 0 ? "Skip tour" : "Back") { if step == 0 { finish() } else { step -= 1 } }.modifier(AccessibleGlassStyle())
+                Button(step == 0 ? "Skip tour" : "Back") { if step == 0 { finish() } else { step -= 1 } }.modifier(AccessibleButtonStyle())
                 Spacer()
                 Button(step == steps.count - 1 ? "Get started" : "Continue") { if step == steps.count - 1 { finish() } else { step += 1 } }
-                    .modifier(AccessibleGlassStyle(prominent: true)).keyboardShortcut(.defaultAction).accessibilityIdentifier("intro-done")
+                    .modifier(AccessibleButtonStyle(prominent: true)).keyboardShortcut(.defaultAction).accessibilityIdentifier("intro-done")
             }
         }.appFont(size: 15).padding(30).frame(width: 530, height: 490)
         .onAppear { fallbackID = store.smartFallbackBrowser?.id ?? store.defaultBundleID ?? store.externalBrowsers.first?.id ?? "" }

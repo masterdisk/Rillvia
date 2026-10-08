@@ -9,6 +9,7 @@ enum AppColors {
     static let linkText = adaptive(light: 0x005AC1, dark: 0x9ECCFF)
     static let actionTint = Color(red: 0, green: 98.0 / 255, blue: 210.0 / 255)
     static let controlBorder = adaptive(light: 0x8A8A90, dark: 0x929298)
+    static let focusRing = adaptive(light: 0x005AC1, dark: 0x9ECCFF)
 
     private static func adaptive(light: Int, dark: Int) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -19,31 +20,77 @@ enum AppColors {
     }
 }
 
-struct AccessibleGlassStyle: ViewModifier {
+struct AccessibleButtonStyle: ViewModifier {
     var prominent = false
     func body(content: Content) -> some View {
-        content.buttonStyle(ReadableGlassButtonStyle(prominent: prominent))
+        content.buttonStyle(ReadableButtonStyle(prominent: prominent))
     }
 }
 
-private struct ReadableGlassButtonStyle: PrimitiveButtonStyle {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.rillviaReduceTransparencyOverride) private var testingReduceTransparency
+private struct ReadableButtonStyle: PrimitiveButtonStyle {
+    @Environment(\.controlSize) private var controlSize
     @Environment(\.rillviaTextScale) private var textScale
     var prominent = false
+    private var minimumLabelHeight: CGFloat {
+        controlSize == .large ? 32 : controlSize == .small ? 16 : controlSize == .mini ? 12 : 20
+    }
     func makeBody(configuration: Configuration) -> some View {
-        if reduceTransparency || testingReduceTransparency {
-            if prominent { button(configuration).buttonStyle(.borderedProminent).tint(AppColors.actionTint) }
-            else { button(configuration).buttonStyle(.bordered) }
+        if prominent {
+            button(configuration).buttonStyle(.borderedProminent).tint(AppColors.actionTint)
         } else {
-            if prominent { button(configuration).buttonStyle(.glassProminent).tint(AppColors.actionTint) }
-            else { button(configuration).buttonStyle(.glass) }
+            button(configuration).buttonStyle(.bordered)
         }
     }
     private func button(_ configuration: Configuration) -> some View {
         Button(action: configuration.trigger) {
             configuration.label.font(.system(size: 13 * textScale))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: minimumLabelHeight * textScale)
         }
+    }
+}
+
+/// One opaque surface and one inset outline, shared by inputs and selectors.
+struct ControlSurface: ViewModifier {
+    var isFocused = false
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.rillviaIncreaseContrastOverride) private var testingIncreasedContrast
+    private var increasedContrast: Bool { contrast == .increased || testingIncreasedContrast }
+    func body(content: Content) -> some View {
+        content
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(increasedContrast ? Color.primary : isFocused ? AppColors.focusRing : AppColors.controlBorder,
+                        lineWidth: isFocused ? (increasedContrast ? 3 : 2) : (increasedContrast ? 2 : 1))
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+    }
+}
+
+struct AppTextField: View {
+    let title: String
+    @Binding var text: String
+    var axis: Axis = .horizontal
+    var focus: FocusState<Bool>.Binding? = nil
+    @FocusState private var localFocus: Bool
+    @Environment(\.rillviaTextScale) private var textScale
+    @Environment(\.isEnabled) private var isEnabled
+    private var fieldFocus: FocusState<Bool>.Binding { focus ?? $localFocus }
+    init(_ title: String, text: Binding<String>, axis: Axis = .horizontal, focus: FocusState<Bool>.Binding? = nil) {
+        self.title = title
+        _text = text
+        self.axis = axis
+        self.focus = focus
+    }
+    var body: some View {
+        TextField(title, text: $text, prompt: Text(title).foregroundColor(AppColors.secondaryText), axis: axis)
+            .textFieldStyle(.plain).appFont(size: 15)
+            .focused(fieldFocus).focusEffectDisabled()
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .frame(minHeight: 44 * textScale)
+            .modifier(ControlSurface(isFocused: fieldFocus.wrappedValue))
+            .opacity(isEnabled ? 1 : 0.55)
     }
 }
 

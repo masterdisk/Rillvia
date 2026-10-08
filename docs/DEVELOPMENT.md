@@ -31,7 +31,7 @@ UI tests bring windows forward and interact with real native controls. They use 
 
 To compile the app and tests without launching anything, replace `test` with `build-for-testing`. Add `-only-testing:RillviaTests` to run the unit suite without the interactive UI suite. GitHub builds run unit tests by default; the manual workflow offers UI tests separately.
 
-The check results and their limits are recorded in [design-qa.md](../design-qa.md) and [the current review](../reviews/2026-10-07-accessibility/README.md). Actual macOS default-browser consent, browser account launches, login-item registration, and invocation from the Apple Shortcuts app are outside that automated run.
+The check results and their limits are recorded in [design-qa.md](../design-qa.md) and [the current review](../reviews/2026-10-08-quiet-controls/README.md). Actual macOS default-browser consent, browser account launches, login-item registration, and invocation from the Apple Shortcuts app are outside that automated run.
 
 ## Sample configuration
 

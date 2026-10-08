@@ -120,7 +120,7 @@ struct MenuPanel: View {
                     Button {
                         if let chosen { _ = store.borrowBrowser(chosen, for: duration) }
                     } label: { Text(duration.actionTitle(browserName: chosen?.name ?? "a browser")).fixedSize(horizontal: false, vertical: true).frame(minWidth: 0, maxWidth: .infinity, minHeight: 24) }
-                    .modifier(AccessibleGlassStyle(prominent: true)).controlSize(.large)
+                    .modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large)
                         .disabled(chosen == nil || !store.isSmartRoutingActive)
                         .accessibilityIdentifier("menu-start-temporary-browser")
                     Text(store.isSmartRoutingActive ? "Your rules resume when it ends." : "Turn on rules in Overview first.").appFont(.callout).foregroundStyle(AppColors.secondaryText)
@@ -143,7 +143,7 @@ struct MenuPanel: View {
             }.frame(maxHeight: .infinity)
             Divider()
             HStack(spacing: 12) {
-                Button("Open Rillvia", systemImage: "macwindow") { presentMainWindow() }.modifier(AccessibleGlassStyle()).controlSize(.large).accessibilityIdentifier("menu-open-app")
+                Button("Open Rillvia", systemImage: "macwindow") { presentMainWindow() }.modifier(AccessibleButtonStyle()).controlSize(.large).accessibilityIdentifier("menu-open-app")
                 Spacer(minLength: 0)
                 Menu {
                     Button("Customize shortcuts") { presentMainWindow(); store.navigate(to: .settings) }
@@ -157,6 +157,7 @@ struct MenuPanel: View {
         }.appFont(size: 14).buttonBorderShape(.roundedRectangle)
             .environment(\.rillviaTextScale, textScale)
             .frame(width: panelWidth, height: 560, alignment: .topLeading)
+            .background(Color(nsColor: .windowBackgroundColor))
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             .accentColor(AppColors.actionTint)
             .onAppear {

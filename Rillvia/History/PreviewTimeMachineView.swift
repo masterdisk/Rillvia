@@ -45,7 +45,7 @@ struct PreviewTimeMachineView: View {
                 ) {
                     store.returnToNow()
                 }
-                .modifier(AccessibleGlassStyle(prominent: true))
+                .modifier(AccessibleButtonStyle(prominent: true))
                 .keyboardShortcut(.cancelAction)
                 .accessibilityIdentifier("return-to-now")
 
@@ -129,11 +129,10 @@ struct PreviewTimeMachineView: View {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("Test a URL")
                         .appFont(.headline)
-                    TextField(
+                    AppTextField(
                         "https://example.com",
                         text: $input
                     )
-                    .textFieldStyle(.roundedBorder)
                     .accessibilityLabel(
                         "URL to evaluate against this historical configuration"
                     )

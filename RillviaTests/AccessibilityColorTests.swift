@@ -21,6 +21,7 @@ final class AccessibilityColorTests: XCTestCase {
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
                 XCTAssertGreaterThanOrEqual(contrast(NSColor(AppColors.controlBorder), .controlBackgroundColor), 3)
+                XCTAssertGreaterThanOrEqual(contrast(NSColor(AppColors.focusRing), .controlBackgroundColor), 3)
             }
         }
     }

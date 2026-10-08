@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Replace glass action buttons with solid native controls. Give every text field and selector one inset outline, use a solid menu background, and remove the extra Settings group border.
 - Rename the project, scheme, source folders, and bundle ID to Rillvia. Import the previous app's saved rules, history, and shortcuts while keeping the original files available.
 - Add Updates in Settings and both app menus. Download a verified installer, then confirm when to install and restart. Restore the previous app if replacement or launch fails.
 - Build a universal DMG locally or in GitHub Actions. Prepare draft releases from version tags, with optional Developer ID signing and notarization.
