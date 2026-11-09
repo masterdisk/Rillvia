@@ -481,10 +481,11 @@ final class HandlerTransactionCoordinator {
         journal: inout HandlerOperationJournal
     ) throws {
         if let configuration = operation.configurationOnSuccess {
+            // Date it when it takes effect, so edits made while macOS asked stay older than the switch.
             try repository.saveConfigurationSnapshot(
                 configuration,
                 snapshotID: operation.id,
-                recordedAt: operation.startedAt
+                recordedAt: now()
             )
         }
         journal.pendingOperation = nil
