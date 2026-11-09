@@ -335,6 +335,22 @@ final class RoutingRuleEngineTests: XCTestCase {
         ) { XCTAssertEqual($0 as? RoutingIssue, .unsupportedURL) }
     }
 
+    func testHostsStrictValidationRejectsStillMatchTheirRules() throws {
+        let configuration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: safari,
+            domainRules: [DomainRule(domain: "example.com", scope: .includeSubdomains, browser: chrome)]
+        )
+
+        let decision = try RoutingEngine(rillvia: rillvia).decision(
+            for: XCTUnwrap(URL(string: "https://-x.example.com/")),
+            configuration: configuration,
+            availableTargets: [safari, chrome]
+        )
+
+        XCTAssertEqual(decision.target, chrome)
+    }
+
     func testMostRecentlySavedDuplicateRuleWinsOverMostEditedOne() throws {
         let older = Date(timeIntervalSince1970: 1_900_000_000)
         let newer = older.addingTimeInterval(60)

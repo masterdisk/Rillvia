@@ -357,7 +357,9 @@ final class BrowserLeaseCoordinator {
                 )
             }
 
-            guard !lease.hasExpired(at: now()) else {
+            // Small clock corrections keep the lease; a start far in the future means the clock was badly wrong.
+            guard !lease.hasExpired(at: now()),
+                  lease.startedAt.timeIntervalSince(now()) < 300 else {
                 var desired = current
                 desired.schemaVersion =
                     RoutingConfiguration.currentSchemaVersion

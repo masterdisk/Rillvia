@@ -41,6 +41,10 @@ enum URLNormalizer {
         }
         if !normalizedHost.unicodeScalars.allSatisfy(\.isASCII) {
             normalizedHost = try punycode(normalizedHost)
+            // IDNA maps fullwidth and ideographic full stops to ".", which can leave a new trailing dot.
+            if normalizedHost.hasSuffix(".") {
+                normalizedHost.removeLast()
+            }
         }
 
         let isIPv4Literal = isIPv4(normalizedHost)
@@ -128,10 +132,26 @@ enum URLNormalizer {
         return URL(string: "https://\(hostCandidate)")
     }
 
+    /// A best-effort host for hosts browsers open but strict validation rejects (such as -x.example.com),
+    /// so rules still apply to them. Hosts no rule can name simply match nothing.
+    static func matchingHost(for url: URL) -> String? {
+        guard var host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else { return nil }
+        if !host.unicodeScalars.allSatisfy(\.isASCII) {
+            guard let encoded = try? punycode(host) else { return nil }
+            host = encoded
+        }
+        while host.hasSuffix(".") {
+            host.removeLast()
+        }
+        guard !host.isEmpty, host.unicodeScalars.allSatisfy({ hostCharacters.contains($0) }) else { return nil }
+        return host
+    }
+
+    private static let hostCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789.-_")
+
     /// Percent-encoded Unicode hosts decode to Unicode; rules and browsers use their punycode form.
     private static func punycode(_ host: String) throws -> String {
         // Only letters may be non-ASCII, so a decoded "/" or "@" can never reshape the host.
-        let hostCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789.-_")
         guard host.unicodeScalars.allSatisfy({ !$0.isASCII || hostCharacters.contains($0) }),
               let encoded = URL(string: "https://\(host)/")?.host(percentEncoded: false)?.lowercased(),
               encoded.unicodeScalars.allSatisfy(\.isASCII) else {

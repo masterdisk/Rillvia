@@ -73,12 +73,12 @@ struct RoutingEngine {
         explicitTarget: BrowserReference? = nil,
         availableTargets: Set<BrowserReference>? = nil
     ) throws -> RoutingDecision {
-        // Browsers open some hosts no rule can name (such as 127.1); those skip rules instead of being dropped.
+        // Browsers open some hosts strict validation rejects; match them leniently instead of dropping the link.
         let host: String?
         do {
             host = try URLNormalizer.normalize(url).host
         } catch URLNormalizationIssue.malformedHost {
-            host = nil
+            host = URLNormalizer.matchingHost(for: url)
         } catch {
             throw RoutingIssue.unsupportedURL
         }

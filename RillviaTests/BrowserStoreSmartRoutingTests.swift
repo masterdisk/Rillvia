@@ -317,6 +317,11 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
             [.init(url: url, browser: safari.reference), .init(url: url, browser: chrome.reference)]
         )
         XCTAssertEqual(store.message, "Safari could not open the link, so it opened in Google Chrome.")
+
+        let repeated = await store.routeIncomingURL(url)
+
+        XCTAssertEqual(repeated, .consumed)
+        XCTAssertEqual(store.message, "Rillvia stopped a repeated link.")
     }
 
     private func makeStore(

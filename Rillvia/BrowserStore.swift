@@ -106,14 +106,17 @@ final class BrowserStore {
     }
 
     static let noticeLifetime: Duration = .seconds(10)
+    static let undoNoticeLifetime: Duration = .seconds(30)
 
     // Status lines are confirmations, not state; an old "Opened the link" should not greet the next visit.
+    // Notices with Undo stay longer, and ⌘Z keeps working after they go.
     private func scheduleNoticeExpiry() {
         noticeExpiry?.cancel()
         guard noticeText != nil else { return }
+        let lifetime = canUndoConfiguration ? Self.undoNoticeLifetime : Self.noticeLifetime
         noticeExpiry = Task { [weak self] in
             repeat {
-                try? await Task.sleep(for: Self.noticeLifetime)
+                try? await Task.sleep(for: lifetime)
                 if Task.isCancelled { return }
             } while self?.isSwitching == true
             self?.noticeText = nil
@@ -172,6 +175,8 @@ final class BrowserStore {
         }
         intentBridge.onStateChanged = { [weak self] in
             self?.reload()
+            // Shortcuts can finish a browser switch too, so links held during it are released.
+            self?.onRoutingAvailabilityChanged?()
         }
         reload()
     }
@@ -667,7 +672,7 @@ final class BrowserStore {
         reload(reconcilingLease: true)
         guard case .smartActive = routingState else {
             // Links that arrive mid-switch wait; every switch drains the queue when it finishes.
-            if isSwitching {
+            if isSwitching || routingState == .degraded(.handlerTransitionInProgress) {
                 message = routingUnavailableMessage
                 return .retryLater
             }
@@ -712,15 +717,22 @@ final class BrowserStore {
             if let intended,
                let fallback = configuration.fallbackBrowser,
                intended.target != fallback,
-               available.contains(fallback),
-               case .opened = await routingCoordinator.route(
-                   url,
-                   configuration: configuration,
-                   explicitTarget: fallback,
-                   availableTargets: available
-               ) {
-                message = "\(failedName) could not open the link, so it opened in \(name(for: fallback))."
-                return .consumed
+               available.contains(fallback) {
+                switch await routingCoordinator.route(
+                    url,
+                    configuration: configuration,
+                    explicitTarget: fallback,
+                    availableTargets: available
+                ) {
+                case .opened:
+                    message = "\(failedName) could not open the link, so it opened in \(name(for: fallback))."
+                    return .consumed
+                case .rejected(.duplicateDispatch):
+                    message = "Rillvia stopped a repeated link."
+                    return .consumed
+                case .rejected, .blocked:
+                    break
+                }
             }
             message = "\(failedName) could not open the link. Reinstall it or choose another browser."
             return .retryLater
