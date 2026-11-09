@@ -172,7 +172,7 @@ With rules on, Rillvia chooses in this order:
 3. A matching shared rule.
 4. The browser chosen for **Other links**.
 
-Turning rules off restores an external browser as the macOS handler. Rillvia also respects later default-browser changes made in macOS.
+Turning rules off restores an external browser as the macOS handler. Rillvia also respects later default-browser changes made in macOS: rules pause, and **Turn on rules** resumes them. A link that still reaches Rillvia while rules are off or paused opens in the browser macOS uses.
 
 Opening or copying a link preserves the original URL. Private-window choices apply to an individual open and are not silently saved as ordinary rules.
 
