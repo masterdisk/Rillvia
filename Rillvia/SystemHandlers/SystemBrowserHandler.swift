@@ -81,20 +81,25 @@ final class NSWorkspaceApplicationAccess: WorkspaceApplicationAccess {
         withApplicationAt applicationURL: URL,
         arguments: [String]
     ) async throws {
+        _ = try await workspace.open(
+            arguments.isEmpty ? [url] : [],
+            withApplicationAt: applicationURL,
+            configuration: Self.openConfiguration(arguments: arguments)
+        )
+    }
+
+    static func openConfiguration(
+        arguments: [String]
+    ) -> NSWorkspace.OpenConfiguration {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.promptsUserIfNeeded = false
-        let urls: [URL]
-        if arguments.isEmpty {
-            urls = [url]
-        } else {
+        if !arguments.isEmpty {
             configuration.arguments = arguments
-            urls = []
+            // macOS drops arguments for a running app, so profile and private links need a new instance.
+            // Chromium and Firefox hand that launch to the window already open, like `open -na`.
+            configuration.createsNewApplicationInstance = true
         }
-        _ = try await workspace.open(
-            urls,
-            withApplicationAt: applicationURL,
-            configuration: configuration
-        )
+        return configuration
     }
 }
 

@@ -63,6 +63,7 @@ enum BrowserLeaseIssue: Error, Equatable, Sendable {
     case noUndoReceipt
     case undoPreconditionFailed
     case configurationPersistenceFailed
+    case handlerTransitionInProgress
 }
 
 enum BrowserLeaseOutcome: Equatable, Sendable {
@@ -151,6 +152,11 @@ final class BrowserLeaseCoordinator {
         configuration.browserLease
     }
 
+    /// True when undoing would make a temporary browser active again.
+    var undoRestoresLease: Bool {
+        undoReceipt?.restore != nil
+    }
+
     var canUndo: Bool {
         guard let undoReceipt else { return false }
         return configuration == undoReceipt.precondition
@@ -217,6 +223,7 @@ final class BrowserLeaseCoordinator {
     }
 
     func endLease() -> BrowserLeaseOutcome {
+        if let issue = pendingTransitionIssue() { return .failed(issue) }
         _ = reconcile()
         do {
             let current = try repository.loadConfiguration()
@@ -247,6 +254,7 @@ final class BrowserLeaseCoordinator {
     }
 
     func undo() -> BrowserLeaseOutcome {
+        if let issue = pendingTransitionIssue() { return .failed(issue) }
         let hadUndoReceipt = undoReceipt != nil
         let reconciliation = reconcile()
         if reconciliation.issue == .configurationPersistenceFailed {
@@ -285,6 +293,15 @@ final class BrowserLeaseCoordinator {
             return .succeeded
         } catch {
             return .failed(.configurationPersistenceFailed)
+        }
+    }
+
+    /// A handler switch that rolls back rewrites the configuration it started from, which would revive an ended lease.
+    private func pendingTransitionIssue() -> BrowserLeaseIssue? {
+        switch smartRoutingCoordinator.configurationMutationIssue() {
+        case nil: nil
+        case .handlerTransitionInProgress: .handlerTransitionInProgress
+        default: .configurationPersistenceFailed
         }
     }
 
@@ -340,7 +357,7 @@ final class BrowserLeaseCoordinator {
                 )
             }
 
-            guard lease.isActive(at: now()) else {
+            guard !lease.hasExpired(at: now()) else {
                 var desired = current
                 desired.schemaVersion =
                     RoutingConfiguration.currentSchemaVersion

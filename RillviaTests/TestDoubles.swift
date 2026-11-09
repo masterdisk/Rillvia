@@ -93,6 +93,7 @@ final class FakeURLLauncher: ExternalURLLaunching {
     }
 
     var error: Error?
+    var failingBrowsers: Set<BrowserReference> = []
     private(set) var calls: [Call] = []
 
     func open(_ url: URL, with browser: BrowserReference) async throws {
@@ -107,6 +108,9 @@ final class FakeURLLauncher: ExternalURLLaunching {
         calls.append(Call(url: url, browser: browser, launch: launch))
         if let error {
             throw error
+        }
+        if failingBrowsers.contains(browser) {
+            throw CocoaError(.fileNoSuchFile)
         }
     }
 }

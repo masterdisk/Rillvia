@@ -211,7 +211,12 @@ struct BrowserLease: Codable, Equatable, Identifiable, Sendable {
 
     func isActive(at date: Date) -> Bool {
         guard date >= startedAt else { return false }
-        return expiresAt.map { date < $0 } ?? true
+        return !hasExpired(at: date)
+    }
+
+    /// A clock stepped back before `startedAt` pauses the lease rather than ending it.
+    func hasExpired(at date: Date) -> Bool {
+        expiresAt.map { date >= $0 } ?? false
     }
 }
 

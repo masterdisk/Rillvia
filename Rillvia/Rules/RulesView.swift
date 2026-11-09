@@ -135,9 +135,13 @@ struct RuleDraftEditor: View {
                 }
                 FieldCaption(title: "Browser") {
                     WideSelector(label: "Browser for this rule", selectedID: draft.browserID,
-                        choices: store.externalBrowsers.map { SelectorChoice(id: $0.id, title: $0.name, icon: store.icon(for: $0)) }, isPresented: $showBrowserPicker) { draft.browserID = $0 }
+                        choices: store.externalBrowsers.map { SelectorChoice(id: $0.id, title: $0.name, icon: store.icon(for: $0)) }, isPresented: $showBrowserPicker) { id in
+                        // Reset only on a user pick; loading another rule must keep its saved profile.
+                        guard id != draft.browserID else { return }
+                        draft.browserID = id
+                        draft.browserProfileID = ""
+                    }
                         .accessibilityIdentifier("rule-browser")
-                        .onChange(of: draft.browserID) { _, _ in draft.browserProfileID = "" }
                 }
                 DisclosureGroup("More options") {
                     VStack(alignment: .leading, spacing: 15) {
@@ -179,6 +183,7 @@ struct RuleDraftEditor: View {
                 StoreNotice()
             }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onChange(of: draft.id) { _, _ in error = nil }
     }
     private func save() {
         guard let domain = draft.normalizedDomain, let browser else { return }

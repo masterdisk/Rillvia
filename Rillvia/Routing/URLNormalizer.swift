@@ -33,11 +33,14 @@ enum URLNormalizer {
             throw URLNormalizationIssue.malformedHost
         }
 
-        let normalizedHost: String
+        var normalizedHost: String
         if host.first == "[", host.last == "]" {
             normalizedHost = String(host.dropFirst().dropLast())
         } else {
             normalizedHost = host
+        }
+        if !normalizedHost.unicodeScalars.allSatisfy(\.isASCII) {
+            normalizedHost = try punycode(normalizedHost)
         }
 
         let isIPv4Literal = isIPv4(normalizedHost)
@@ -125,6 +128,18 @@ enum URLNormalizer {
         return URL(string: "https://\(hostCandidate)")
     }
 
+    /// Percent-encoded Unicode hosts decode to Unicode; rules and browsers use their punycode form.
+    private static func punycode(_ host: String) throws -> String {
+        // Only letters may be non-ASCII, so a decoded "/" or "@" can never reshape the host.
+        let hostCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789.-_")
+        guard host.unicodeScalars.allSatisfy({ !$0.isASCII || hostCharacters.contains($0) }),
+              let encoded = URL(string: "https://\(host)/")?.host(percentEncoded: false)?.lowercased(),
+              encoded.unicodeScalars.allSatisfy(\.isASCII) else {
+            throw URLNormalizationIssue.malformedHost
+        }
+        return encoded
+    }
+
     private static func isValidDomain(_ host: String) -> Bool {
         guard host.utf8.count <= 253 else { return false }
         let labels = host.split(separator: ".", omittingEmptySubsequences: false)
@@ -137,10 +152,11 @@ enum URLNormalizer {
                   label.last != "-" else {
                 return false
             }
+            // Underscores are not valid hostnames, but real sites such as foo_bar.s3.amazonaws.com use them.
             return label.unicodeScalars.allSatisfy { scalar in
                 scalar.isASCII
                     && (CharacterSet.alphanumerics.contains(scalar)
-                        || scalar == "-")
+                        || scalar == "-" || scalar == "_")
             }
         }
     }

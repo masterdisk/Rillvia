@@ -95,6 +95,11 @@ struct StoreNotice: View {
                     Button("Undo") { store.workspace.request { _ = store.undoConfigurationChange() } }
                         .accessibilityIdentifier("undo-configuration")
                 }
+                Button { store.dismissMessage() } label: {
+                    Image(systemName: "xmark").appFont(size: 11, weight: .semibold).foregroundStyle(AppColors.secondaryText)
+                        .frame(width: 20, height: 20).contentShape(Rectangle())
+                }.buttonStyle(.plain).help("Dismiss").accessibilityLabel("Dismiss message")
+                    .accessibilityIdentifier("dismiss-store-notice")
             }
             .padding(12)
             .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
@@ -160,15 +165,24 @@ struct TemporaryBrowserForm: View {
 struct ActiveBrowserNotice: View {
     @Environment(BrowserStore.self) private var store
     var body: some View {
-        if let browser = store.activeLeaseBrowser {
+        // Built from the lease itself so an uninstalled browser's lease can still be seen and ended.
+        if let lease = store.activeBrowserLease {
             HStack(spacing: 12) {
-                BrowserIcon(browser: browser)
+                BrowserIcon(browser: store.activeLeaseBrowser)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Using \(browser.name) temporarily").appFont(.body, weight: .medium)
-                    Text(store.activeLeaseRemainingText ?? "Until you stop").appFont(.callout).foregroundStyle(AppColors.secondaryText)
+                    Text("Using \(store.displayName(for: lease.browser)) temporarily").appFont(.body, weight: .medium)
+                    if store.activeLeaseBrowser == nil {
+                        Text("Not installed, so your rules apply until you end this.").appFont(.callout).foregroundStyle(AppColors.warningText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 1)) { _ in
+                            Text(store.activeLeaseRemainingText ?? "Until you stop").appFont(.callout).foregroundStyle(AppColors.secondaryText)
+                                .monospacedDigit()
+                        }
+                    }
                 }
                 Spacer(minLength: 8)
-                Button("End") { _ = store.endBrowserLease() }.accessibilityIdentifier("end-temporary-browser")
+                Button("End") { _ = store.endBrowserLease() }.disabled(store.isSwitching).accessibilityIdentifier("end-temporary-browser")
             }.padding(14).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         }
         if store.canUndoLease { Button("Undo temporary browser change") { _ = store.undoBrowserLeaseChange() } }

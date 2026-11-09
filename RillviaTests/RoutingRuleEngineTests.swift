@@ -311,4 +311,48 @@ final class RoutingRuleEngineTests: XCTestCase {
 
         XCTAssertEqual(decision.target, chrome)
     }
+
+    func testHostsNoRuleCanNameSkipRulesAndUseOtherLinks() throws {
+        let configuration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: safari,
+            domainRules: [DomainRule(domain: "example.com", scope: .includeSubdomains, browser: chrome)]
+        )
+
+        let decision = try RoutingEngine(rillvia: rillvia).decision(
+            for: XCTUnwrap(URL(string: "http://127.1/admin")),
+            configuration: configuration,
+            availableTargets: [safari, chrome]
+        )
+
+        XCTAssertEqual(decision, RoutingDecision(target: safari, reason: .externalFallback))
+        XCTAssertThrowsError(
+            try RoutingEngine(rillvia: rillvia).decision(
+                for: XCTUnwrap(URL(string: "ftp://example.com/file")),
+                configuration: configuration,
+                availableTargets: [safari, chrome]
+            )
+        ) { XCTAssertEqual($0 as? RoutingIssue, .unsupportedURL) }
+    }
+
+    func testMostRecentlySavedDuplicateRuleWinsOverMostEditedOne() throws {
+        let older = Date(timeIntervalSince1970: 1_900_000_000)
+        let newer = older.addingTimeInterval(60)
+        let configuration = RoutingConfiguration(
+            mode: .smart,
+            fallbackBrowser: safari,
+            domainRules: [
+                DomainRule(revision: 4, domain: "example.com", browser: firefox, updatedAt: older),
+                DomainRule(revision: 2, domain: "example.com", browser: chrome, updatedAt: newer),
+            ]
+        )
+
+        let decision = try RoutingEngine(rillvia: rillvia).decision(
+            for: XCTUnwrap(URL(string: "https://example.com")),
+            configuration: configuration,
+            availableTargets: [safari, chrome, firefox]
+        )
+
+        XCTAssertEqual(decision.target, chrome)
+    }
 }

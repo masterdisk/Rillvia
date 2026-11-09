@@ -38,6 +38,23 @@ final class URLNormalizerTests: XCTestCase {
         }
     }
 
+    func testAcceptsUnderscoreAndPercentEncodedUnicodeHostsThatBrowsersOpen() throws {
+        XCTAssertEqual(
+            try URLNormalizer.normalize(XCTUnwrap(URL(string: "https://foo_bar.s3.amazonaws.com/key"))).host,
+            "foo_bar.s3.amazonaws.com"
+        )
+        let encoded = try URLNormalizer.normalize(XCTUnwrap(URL(string: "https://b%C3%BCcher.de/")))
+        XCTAssertEqual(encoded.host, "xn--bcher-kva.de")
+        XCTAssertTrue(encoded.isIDN)
+        XCTAssertEqual(try URLNormalizer.normalizeHost("my_host.example.com"), "my_host.example.com")
+    }
+
+    func testEncodedSeparatorsCannotReshapeTheHost() {
+        for value in ["https://ex%2Fample.com/", "https://b%C3%BCcher%2F.de/", "https://b%C3%BCcher%40evil.com/"] {
+            XCTAssertThrowsError(try URLNormalizer.normalize(XCTUnwrap(URL(string: value))), value)
+        }
+    }
+
     func testNormalizeHostAcceptsBareHostsAndPastedWebURLs() throws {
         XCTAssertEqual(
             try URLNormalizer.normalizeHost("example.com"),

@@ -96,6 +96,43 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         XCTAssertTrue(store.routingModeDetail.contains("will not take it back"))
     }
 
+    func testTurningOnPausedRulesResumesWithSavedFallback() async throws {
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.reference
+            )
+        )
+        let handler = makeHandler(handlers: .same(application(for: safari)))
+        let store = makeStore(handler: handler)
+        await store.activate()
+
+        await store.enableSmartRouting()
+
+        XCTAssertEqual(store.routingState, .smartActive(chrome.reference))
+        XCTAssertEqual(handler.handlers, .same(application(for: rillvia)))
+        XCTAssertEqual(store.message, "Links open in Google Chrome, unless a rule says otherwise.")
+    }
+
+    func testTurningOffPausedRulesKeepsCurrentMacOSBrowser() async throws {
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.reference
+            )
+        )
+        let handler = makeHandler(handlers: .same(application(for: safari)))
+        let store = makeStore(handler: handler)
+        await store.activate()
+
+        await store.disableSmartRouting()
+
+        XCTAssertEqual(store.routingState, .direct)
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        XCTAssertEqual(handler.handlers, .same(application(for: safari)))
+        XCTAssertEqual(store.message, "Stopped. Safari is the usual browser.")
+    }
+
     func testSuspendedSplitHandlersStillDisplayConfiguredFallback() async throws {
         try repository.saveConfiguration(
             RoutingConfiguration(
@@ -230,24 +267,56 @@ final class BrowserStoreSmartRoutingTests: XCTestCase {
         )
     }
 
-    func testIncomingURLReconcilesExternalOwnershipBeforeDispatch() async {
+    func testIncomingURLWhilePausedOpensInTheMacOSBrowserWithoutReclaiming() async {
         let handler = makeHandler(handlers: .same(application(for: chrome)))
         let launcher = FakeURLLauncher()
         let store = makeStore(handler: handler, launcher: launcher)
         await store.enableSmartRouting()
         handler.handlers = .same(application(for: safari))
+        let url = URL(string: "https://example.com/late-event")!
 
-        let disposition = await store.routeIncomingURL(
-            URL(string: "https://example.com/late-event")!
-        )
+        let disposition = await store.routeIncomingURL(url)
 
-        XCTAssertEqual(disposition, .retryLater)
-        XCTAssertTrue(launcher.calls.isEmpty)
+        XCTAssertEqual(disposition, .consumed)
+        XCTAssertEqual(launcher.calls, [.init(url: url, browser: safari.reference)])
         XCTAssertEqual(
             store.routingState,
             .smartSuspended(chrome.reference)
         )
         XCTAssertEqual(handler.setCalls.count, 2)
+    }
+
+    func testIncomingURLWithRulesOffOpensInTheMacOSBrowser() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let launcher = FakeURLLauncher()
+        let store = makeStore(handler: handler, launcher: launcher)
+        await store.activate()
+        let url = URL(string: "https://example.com/direct")!
+
+        let disposition = await store.routeIncomingURL(url)
+
+        XCTAssertEqual(disposition, .consumed)
+        XCTAssertEqual(launcher.calls, [.init(url: url, browser: chrome.reference)])
+        XCTAssertEqual(store.routingState, .direct)
+    }
+
+    func testBrokenRuleBrowserFallsBackToOtherLinksInsteadOfHoldingTheQueue() async {
+        let handler = makeHandler(handlers: .same(application(for: chrome)))
+        let launcher = FakeURLLauncher()
+        let store = makeStore(handler: handler, launcher: launcher)
+        await store.enableSmartRouting()
+        XCTAssertNotNil(store.createRule(domain: "example.com", browser: safari.reference))
+        launcher.failingBrowsers = [safari.reference]
+        let url = URL(string: "https://example.com/report")!
+
+        let disposition = await store.routeIncomingURL(url)
+
+        XCTAssertEqual(disposition, .consumed)
+        XCTAssertEqual(
+            launcher.calls,
+            [.init(url: url, browser: safari.reference), .init(url: url, browser: chrome.reference)]
+        )
+        XCTAssertEqual(store.message, "Safari could not open the link, so it opened in Google Chrome.")
     }
 
     private func makeStore(

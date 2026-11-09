@@ -73,9 +73,12 @@ struct RoutingEngine {
         explicitTarget: BrowserReference? = nil,
         availableTargets: Set<BrowserReference>? = nil
     ) throws -> RoutingDecision {
-        let normalized: NormalizedWebURL
+        // Browsers open some hosts no rule can name (such as 127.1); those skip rules instead of being dropped.
+        let host: String?
         do {
-            normalized = try URLNormalizer.normalize(url)
+            host = try URLNormalizer.normalize(url).host
+        } catch URLNormalizationIssue.malformedHost {
+            host = nil
         } catch {
             throw RoutingIssue.unsupportedURL
         }
@@ -116,11 +119,11 @@ struct RoutingEngine {
         let activeProfile = configuration.profiles.first {
             $0.id == configuration.activeProfileID && $0.isEnabled
         }
-        if let activeProfile {
+        if let host, let activeProfile {
             if let decision = firstDecision(
                 in: configuration.domainRules,
                 profileID: activeProfile.id,
-                host: normalized.host,
+                host: host,
                 available: usable,
                 exactReason: {
                     .activeProfileExactHost(ruleID: $0.id)
@@ -133,10 +136,10 @@ struct RoutingEngine {
             }
         }
 
-        if let decision = firstDecision(
+        if let host, let decision = firstDecision(
             in: configuration.domainRules,
             profileID: nil,
-            host: normalized.host,
+            host: host,
             available: usable,
             exactReason: {
                 .globalExactHost(ruleID: $0.id)
@@ -233,12 +236,13 @@ struct RoutingEngine {
         try? URLNormalizer.normalizeHost(rule.domain)
     }
 
+    /// Among rules for the same domain, the one saved most recently wins.
     private func ruleTieBreak(_ lhs: DomainRule, _ rhs: DomainRule) -> Bool {
-        if lhs.revision != rhs.revision {
-            return lhs.revision > rhs.revision
-        }
         if lhs.updatedAt != rhs.updatedAt {
             return lhs.updatedAt > rhs.updatedAt
+        }
+        if lhs.revision != rhs.revision {
+            return lhs.revision > rhs.revision
         }
         return lhs.id.uuidString < rhs.id.uuidString
     }

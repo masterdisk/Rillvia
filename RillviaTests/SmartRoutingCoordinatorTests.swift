@@ -228,6 +228,48 @@ final class SmartRoutingCoordinatorTests: XCTestCase {
         XCTAssertEqual(handler.handlers, .same(safari))
     }
 
+    func testEnablingSuspendedSetupReclaimsHandlersAndKeepsSavedFallback() async throws {
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.browser
+            )
+        )
+        let handler = makeHandler(handlers: .same(safari))
+        let coordinator = makeCoordinator(handler: handler)
+        _ = await coordinator.reconcile()
+
+        let outcome = await coordinator.enable()
+
+        XCTAssertEqual(outcome, .succeeded)
+        XCTAssertEqual(handler.handlers, .same(rillvia))
+        XCTAssertEqual(
+            try repository.loadConfiguration().fallbackBrowser,
+            chrome.browser
+        )
+        XCTAssertEqual(coordinator.status, .active(chrome.browser))
+    }
+
+    func testDisablingSuspendedSetupKeepsTheBrowserMacOSUses() async throws {
+        try repository.saveConfiguration(
+            RoutingConfiguration(
+                mode: .smart,
+                fallbackBrowser: chrome.browser
+            )
+        )
+        let handler = makeHandler(handlers: .same(safari))
+        let coordinator = makeCoordinator(handler: handler)
+        _ = await coordinator.reconcile()
+
+        let outcome = await coordinator.disable()
+
+        XCTAssertEqual(outcome, .succeeded)
+        XCTAssertTrue(handler.setCalls.isEmpty)
+        XCTAssertEqual(handler.handlers, .same(safari))
+        XCTAssertEqual(try repository.loadConfiguration().mode, .direct)
+        XCTAssertEqual(coordinator.status, .direct)
+    }
+
     func testChangingFallbackInSmartModeDoesNotMutateSystemHandlers() async throws {
         try repository.saveConfiguration(
             RoutingConfiguration(

@@ -76,14 +76,23 @@ final class SmartRoutingCoordinator {
         if case .degraded(let issue) = currentStatus {
             return .degraded(issue)
         }
-        guard configuration.mode == .direct else {
+        let isResuming: Bool
+        if case .suspended = currentStatus {
+            isResuming = true
+        } else {
+            isResuming = false
+        }
+        guard configuration.mode == .direct || isResuming else {
             return .failed(.smartRoutingAlreadyEnabled)
         }
 
         let agreedExternal = systemHandler.currentHandlers()
             .health(rillvia: rillvia)
             .agreedExternalBrowser
+        // A paused setup keeps its saved Other links browser; macOS's newer default only seeds a fresh one.
+        let savedFallback = isResuming ? configuration.fallbackBrowser : nil
         guard let fallback = explicitFallback
+            ?? savedFallback
             ?? agreedExternal
             ?? configuration.fallbackBrowser else {
             return .failed(.missingFallback)
@@ -115,6 +124,14 @@ final class SmartRoutingCoordinator {
         }
         guard configuration.mode == .smart else {
             return .failed(.smartRoutingNotEnabled)
+        }
+        if case .external(let browser) = systemHandler.currentHandlers().ownership(rillvia: rillvia),
+           !AppIdentity.isSelf(browser, reference: rillvia) {
+            // macOS already opens links elsewhere, so stop routing without overriding that choice.
+            var desiredConfiguration = configuration
+            desiredConfiguration.mode = .direct
+            desiredConfiguration.browserLease = nil
+            return applyConfiguration(desiredConfiguration)
         }
         guard let fallback = configuration.fallbackBrowser else {
             return .failed(.missingFallback)

@@ -134,7 +134,7 @@ struct MenuPanel: View {
                     }
                     StoreNotice()
                     if let message = store.shortcuts.lastMessage {
-                        Text(message).appFont(.callout).foregroundStyle(AppColors.secondaryText).fixedSize(horizontal: false, vertical: true)
+                        Text("Last shortcut: \(message)").appFont(.callout).foregroundStyle(AppColors.secondaryText).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 // Scroll content must keep the panel's width when native controls update their intrinsic size.

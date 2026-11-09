@@ -18,8 +18,9 @@ struct AppSettingsView: View {
                     PageHeading(title: "Settings", subtitle: "Appearance, startup, updates, and shortcuts.", identifier: "settings-title", size: 32)
                     VStack(alignment: .trailing, spacing: 8) {
                         RoutingStatus()
-                        Button(store.isSmartRoutingActive ? "Turn off rules" : "Turn on rules") {
-                            Task { if store.isSmartRoutingActive { await store.disableSmartRouting() } else { await store.enableSmartRouting() } }
+                        // Follows the saved mode so paused rules can still be turned off.
+                        Button(store.isSmartRoutingConfigured ? "Turn off rules" : "Turn on rules") {
+                            Task { if store.isSmartRoutingConfigured { await store.disableSmartRouting() } else { await store.enableSmartRouting() } }
                         }.modifier(AccessibleButtonStyle()).controlSize(.small).disabled(store.isSwitching).accessibilityIdentifier("settings-routing-toggle")
                     }.padding(.top, 5)
                 }

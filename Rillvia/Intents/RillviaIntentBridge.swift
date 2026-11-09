@@ -60,7 +60,7 @@ extension RillviaAutomationError: LocalizedError {
         case .unsupportedURL:
             "Choose a link that starts with http:// or https://."
         case .smartRoutingUnavailable:
-            "Open Rillvia and turn on link sending."
+            "Open Rillvia and turn on rules."
         case .selfTarget:
             "Choose an installed browser."
         case .browserUnavailable:
@@ -68,7 +68,7 @@ extension RillviaAutomationError: LocalizedError {
         case .profileUnavailable:
             "Choose an enabled rule set that still exists."
         case .automationLeasePermissionDisabled:
-            "Turn on “Let Shortcuts switch browsers” in Rillvia first."
+            "Turn on “Allow temporary switches” in Rillvia Settings first."
         case .handlerTransitionInProgress:
             "Wait for the current change to finish, then try again."
         case .noUndoAvailable:
@@ -347,6 +347,11 @@ final class RillviaIntentBridge: @unchecked Sendable {
         }
 
         if browserLeaseCoordinator.canUndo {
+            // Bringing a temporary browser back is a temporary switch, so it needs the same permission.
+            if browserLeaseCoordinator.undoRestoresLease,
+               (try? repository.loadConfiguration().allowAutomationLeases) != true {
+                throw RillviaAutomationError.automationLeasePermissionDisabled
+            }
             switch browserLeaseCoordinator.undo() {
             case .succeeded:
                 let restored = try repository.loadConfiguration()
@@ -395,6 +400,8 @@ final class RillviaIntentBridge: @unchecked Sendable {
             .noUndoAvailable
         case .configurationPersistenceFailed:
             .persistenceFailed
+        case .handlerTransitionInProgress:
+            .handlerTransitionInProgress
         }
     }
 

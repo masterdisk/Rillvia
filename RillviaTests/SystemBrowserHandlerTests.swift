@@ -111,6 +111,18 @@ final class SystemBrowserHandlerTests: XCTestCase {
             ]
         )
     }
+
+    func testLaunchArgumentsRequestANewInstanceSoRunningBrowsersReceiveThem() {
+        let plain = NSWorkspaceApplicationAccess.openConfiguration(arguments: [])
+        let profile = NSWorkspaceApplicationAccess.openConfiguration(
+            arguments: ["--profile-directory=Profile 1", "https://example.com"]
+        )
+
+        XCTAssertFalse(plain.createsNewApplicationInstance)
+        XCTAssertFalse(plain.promptsUserIfNeeded)
+        XCTAssertTrue(profile.createsNewApplicationInstance)
+        XCTAssertEqual(profile.arguments, ["--profile-directory=Profile 1", "https://example.com"])
+    }
 }
 
 private final class FakeWorkspaceApplicationAccess:

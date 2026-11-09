@@ -525,6 +525,37 @@ final class BrowserLeaseCoordinatorTests: XCTestCase {
         )
     }
 
+    func testClockSteppedBackBeforeTheStartKeepsTheLease() throws {
+        var now = Date(timeIntervalSince1970: 1_900_000_000)
+        try saveActiveSmartConfiguration()
+        let coordinator = makeCoordinator(
+            handler: makeHandler(handlers: .same(rillvia)),
+            scheduler: FakeBrowserLeaseScheduler(),
+            now: { now }
+        )
+        XCTAssertEqual(coordinator.startLease(to: safari.browser, preset: .untilEnded), .succeeded)
+
+        now = now.addingTimeInterval(-5)
+        let reconciliation = coordinator.reconcile()
+
+        XCTAssertFalse(reconciliation.didExpire)
+        XCTAssertEqual(try repository.loadConfiguration().browserLease?.browser, safari.browser)
+    }
+
+    func testEndingALeaseWaitsForAPendingHandlerSwitch() throws {
+        try saveActiveSmartConfiguration()
+        let coordinator = makeCoordinator(
+            handler: makeHandler(handlers: .same(rillvia)),
+            scheduler: FakeBrowserLeaseScheduler()
+        )
+        XCTAssertEqual(coordinator.startLease(to: safari.browser, preset: .untilEnded), .succeeded)
+        try repository.saveHandlerJournal(HandlerOperationJournal(pendingOperation: pendingOperation()))
+
+        XCTAssertEqual(coordinator.endLease(), .failed(.handlerTransitionInProgress))
+        XCTAssertEqual(coordinator.undo(), .failed(.handlerTransitionInProgress))
+        XCTAssertNotNil(try repository.loadConfiguration().browserLease)
+    }
+
     private func makeHandler(
         handlers: HTTPHandlerSnapshot
     ) -> FakeSystemBrowserHandler {

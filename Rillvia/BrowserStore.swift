@@ -34,7 +34,15 @@ final class BrowserStore {
     private(set) var browsers: [InstalledBrowser] = []
     private(set) var switchable: [InstalledBrowser] = []
     private(set) var defaultBundleID: String?
-    private(set) var message: String?
+    private(set) var message: String? {
+        get { noticeText }
+        set {
+            noticeText = newValue
+            scheduleNoticeExpiry()
+        }
+    }
+    private var noticeText: String?
+    @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
     private(set) var canUndo = false
     private(set) var transactionStatus: HandlerTransactionStatus = .idle
     private(set) var handlerHealth: HTTPHandlerHealth
@@ -89,6 +97,25 @@ final class BrowserStore {
         }
         message = "Restored the previous rules and rule sets."
         return true
+    }
+
+    func dismissMessage() {
+        message = nil
+    }
+
+    static let noticeLifetime: Duration = .seconds(10)
+
+    // Status lines are confirmations, not state; an old "Opened the link" should not greet the next visit.
+    private func scheduleNoticeExpiry() {
+        noticeExpiry?.cancel()
+        guard noticeText != nil else { return }
+        noticeExpiry = Task { [weak self] in
+            repeat {
+                try? await Task.sleep(for: Self.noticeLifetime)
+                if Task.isCancelled { return }
+            } while self?.isSwitching == true
+            self?.noticeText = nil
+        }
     }
 
     func navigate(to destination: WorkspaceDestination) {
@@ -263,7 +290,11 @@ final class BrowserStore {
         case .smartActive(let fallback):
             "Links open in \(name(for: fallback)), unless a rule says otherwise."
         case .smartSuspended(let fallback):
-            "macOS changed the default browser. Rillvia will not take it back. Your rules and the \(name(for: fallback)) choice are saved."
+            if let browser = handlerHealth.agreedExternalBrowser, AppIdentity.isSelf(browser, reference: rillvia) {
+                "Links still go to the app Rillvia replaced. Turn on rules to finish the move. Your rules and the \(name(for: fallback)) choice are saved."
+            } else {
+                "macOS changed the default browser. Rillvia will not take it back. Your rules and the \(name(for: fallback)) choice are saved."
+            }
         case .disabling(let fallback):
             "Waiting for macOS to make \(name(for: fallback)) the usual browser."
         case .degraded(let issue):
@@ -276,6 +307,13 @@ final class BrowserStore {
             return nil
         }
         return installed.first { $0.reference == fallback }
+    }
+
+    /// The browser macOS uses, unless that is the app Rillvia replaced, which still counts as Rillvia.
+    private var currentExternalBrowser: BrowserReference? {
+        handlerHealth.agreedExternalBrowser.flatMap {
+            AppIdentity.isSelf($0, reference: rillvia) ? nil : $0
+        }
     }
 
     var hasSplitHandlers: Bool {
@@ -467,14 +505,16 @@ final class BrowserStore {
 
     func enableSmartRouting() async {
         guard !isSwitching else { return }
-        guard !isSmartRoutingConfigured else {
+        guard !isSmartRoutingActive else {
             message = "Rillvia is already sending links."
             return
         }
 
-        let fallback = handlerHealth.agreedExternalBrowser
-            ?? smartRoutingCoordinator.configuration.fallbackBrowser
-            ?? selectedBrowserForRepair?.reference
+        let savedFallback = smartRoutingCoordinator.configuration.fallbackBrowser
+        let macOSBrowser = currentExternalBrowser
+        let fallback = isSmartRoutingConfigured
+            ? savedFallback ?? macOSBrowser
+            : macOSBrowser ?? savedFallback ?? selectedBrowserForRepair?.reference
         guard let fallback else {
             message = smartRoutingMessage(for: .missingFallback)
             return
@@ -483,6 +523,7 @@ final class BrowserStore {
         routingState = .enabling(fallback)
         transactionStatus = .switching
         message = "Waiting for macOS to let Rillvia open web links."
+        defer { onRoutingAvailabilityChanged?() }
         let outcome = await smartRoutingCoordinator.enable(
             fallback: fallback
         )
@@ -492,7 +533,6 @@ final class BrowserStore {
         case .succeeded:
             transactionStatus = .idle
             message = "Links open in \(name(for: fallback)), unless a rule says otherwise."
-            onRoutingAvailabilityChanged?()
         case .failed(let issue):
             transactionStatus = .idle
             message = smartRoutingMessage(for: issue)
@@ -505,13 +545,16 @@ final class BrowserStore {
 
     func disableSmartRouting() async {
         guard !isSwitching else { return }
-        guard let fallback = routingConfiguration.fallbackBrowser else {
+        // When macOS already uses another browser, turning rules off keeps it.
+        guard let fallback = currentExternalBrowser
+            ?? routingConfiguration.fallbackBrowser else {
             message = smartRoutingMessage(for: .missingFallback)
             return
         }
 
         routingState = .disabling(fallback)
         transactionStatus = .switching
+        defer { onRoutingAvailabilityChanged?() }
         message = "Stopping. \(name(for: fallback)) will be the usual browser."
         let outcome = await smartRoutingCoordinator.disable()
         reload()
@@ -621,14 +664,25 @@ final class BrowserStore {
     func routeIncomingURL(_ url: URL) async -> IncomingURLDisposition {
         reload(reconcilingLease: true)
         guard case .smartActive = routingState else {
-            message = routingUnavailableMessage
-            return .retryLater
+            // Links that arrive mid-switch wait; every switch drains the queue when it finishes.
+            if isSwitching {
+                message = routingUnavailableMessage
+                return .retryLater
+            }
+            return await openWithoutRules(url)
         }
 
+        let configuration = smartRoutingCoordinator.configuration
+        let available = availableBrowserReferences
+        let intended = try? routingCoordinator.decision(
+            for: url,
+            configuration: configuration,
+            availableTargets: available
+        )
         let outcome = await routingCoordinator.route(
             url,
-            configuration: smartRoutingCoordinator.configuration,
-            availableTargets: availableBrowserReferences
+            configuration: configuration,
+            availableTargets: available
         )
         switch outcome {
         case .opened(let browser):
@@ -649,15 +703,55 @@ final class BrowserStore {
             message = routingUnavailableMessage
             return .retryLater
         case .blocked(.launchFailed):
-            let fallbackName = smartFallbackBrowser?.name
+            let failedName = intended.map { name(for: $0.target) }
+                ?? smartFallbackBrowser?.name
                 ?? defaultBrowserName
-            message = "\(fallbackName) could not open the link. Reinstall it or choose another browser."
+            // A broken rule or temporary browser must not strand this link, or the ones queued behind it.
+            if let intended,
+               let fallback = configuration.fallbackBrowser,
+               intended.target != fallback,
+               available.contains(fallback),
+               case .opened = await routingCoordinator.route(
+                   url,
+                   configuration: configuration,
+                   explicitTarget: fallback,
+                   availableTargets: available
+               ) {
+                message = "\(failedName) could not open the link, so it opened in \(name(for: fallback))."
+                return .consumed
+            }
+            message = "\(failedName) could not open the link. Reinstall it or choose another browser."
             return .retryLater
         case .blocked(.missingFallback):
             message = smartRoutingMessage(for: .missingFallback)
             return .retryLater
         case .blocked:
             message = routingUnavailableMessage
+            return .retryLater
+        }
+    }
+
+    /// Rules are off or paused, yet a link still reached Rillvia: open it where macOS would without Rillvia.
+    private func openWithoutRules(_ url: URL) async -> IncomingURLDisposition {
+        let available = availableBrowserReferences
+        let target = [handlerHealth.agreedExternalBrowser, routingConfiguration.fallbackBrowser]
+            .compactMap { $0 }
+            .first { available.contains($0) }
+        guard let target else {
+            message = routingUnavailableMessage
+            return .retryLater
+        }
+        let outcome = await routingCoordinator.route(
+            url,
+            configuration: smartRoutingCoordinator.configuration,
+            explicitTarget: target,
+            availableTargets: available
+        )
+        updateMessage(for: outcome)
+        switch outcome {
+        case .opened, .rejected(.duplicateDispatch), .rejected(.unsupportedURL):
+            return .consumed
+        case .rejected, .blocked:
             return .retryLater
         }
     }
@@ -1018,6 +1112,7 @@ final class BrowserStore {
         guard !isSwitching else { return }
         transactionStatus = .undoing
         message = "Restoring the previous web-link handlers."
+        defer { onRoutingAvailabilityChanged?() }
 
         let outcome = await transactionCoordinator.undo()
         reload()
@@ -1043,6 +1138,7 @@ final class BrowserStore {
     func activate() async {
         guard !isSwitching else { return }
         transactionStatus = .recovering
+        defer { onRoutingAvailabilityChanged?() }
         let routingStatus = await smartRoutingCoordinator.reconcile()
         reload(reconcilingLease: true)
 
@@ -1077,6 +1173,7 @@ final class BrowserStore {
     ) async {
         transactionStatus = .switching
         message = "Waiting for macOS to confirm both web-link handlers."
+        defer { onRoutingAvailabilityChanged?() }
 
         let outcome = await transactionCoordinator.switchDirect(
             to: browser.reference
@@ -1273,6 +1370,8 @@ final class BrowserStore {
             "Undo is no longer available because the rules changed."
         case .configurationPersistenceFailed:
             "Rillvia could not save the temporary browser."
+        case .handlerTransitionInProgress:
+            "Rillvia is still changing how links open. Try again when it finishes."
         }
     }
 
@@ -1359,7 +1458,8 @@ final class BrowserStore {
             case .configurationPersistenceFailed:
                 message = "Rillvia could not check the temporary browser. Expired ones will not be used."
             case nil, .smartRoutingUnavailable, .noActiveLease,
-                    .noUndoReceipt, .undoPreconditionFailed:
+                    .noUndoReceipt, .undoPreconditionFailed,
+                    .handlerTransitionInProgress:
                 break
             }
         }
