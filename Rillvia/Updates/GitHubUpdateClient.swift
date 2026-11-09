@@ -13,7 +13,8 @@ struct GitHubUpdateClient: UpdateProviding {
     init(session: URLSession? = nil, cli: URL? = Self.installedCLI) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 180
+        // Installers are tens of megabytes; slow connections need longer than three minutes.
+        configuration.timeoutIntervalForResource = 600
         self.session = session ?? URLSession(configuration: configuration)
         self.cli = cli
     }
@@ -49,11 +50,21 @@ struct GitHubUpdateClient: UpdateProviding {
             guard let http = response as? HTTPURLResponse else { throw UpdateError.downloadFailed }
             if http.statusCode == 200 {
                 try FileManager.default.moveItem(at: download, to: destination)
-            } else if [401, 403, 404].contains(http.statusCode), let cli {
+            } else if [401, 403, 404].contains(http.statusCode) {
                 try? FileManager.default.removeItem(at: download)
-                try await UpdateTool.run(cli, ["api", "repos/\(UpdateSource.repository)/releases/assets/\(asset.id)",
-                    "--header", "Accept: application/octet-stream"], output: destination, timeout: 180)
-            } else { throw UpdateError.accessRequired }
+                guard let cli else { throw UpdateError.accessRequired }
+                do {
+                    try await UpdateTool.run(cli, ["api", "repos/\(UpdateSource.repository)/releases/assets/\(asset.id)",
+                        "--header", "Accept: application/octet-stream"], output: destination, timeout: 600)
+                } catch UpdateError.timeout {
+                    throw UpdateError.timeout
+                } catch {
+                    throw UpdateError.downloadFailed
+                }
+            } else {
+                try? FileManager.default.removeItem(at: download)
+                throw UpdateError.downloadFailed
+            }
             try await Task.detached { try UpdateFiles.verify(destination, asset: asset) }.value
             return destination
         } catch {
@@ -104,10 +115,13 @@ enum UpdateTool {
         defer { try? handle?.close() }
         process.standardOutput = handle ?? FileHandle.nullDevice
         try process.run()
+        let started = Date()
         let deadline = DispatchWorkItem { if process.isRunning { process.terminate() } }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: deadline)
         process.waitUntilExit()
         deadline.cancel()
-        guard process.terminationStatus == 0 else { throw UpdateError.toolFailed }
+        guard process.terminationStatus == 0 else {
+            throw Date().timeIntervalSince(started) >= timeout ? UpdateError.timeout : UpdateError.toolFailed
+        }
     }
 }

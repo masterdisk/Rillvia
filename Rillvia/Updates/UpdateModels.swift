@@ -59,7 +59,7 @@ enum UpdateError: Error, Equatable, LocalizedError {
         case .timeout: "The update took too long. Try again."
         case .invalidApp: "This installer does not contain the expected Rillvia version."
         case .wrongSigner: "This update was signed by a different developer. The installed app has been kept."
-        case .cannotReplace: "Rillvia cannot replace this copy. Move it to your Applications folder, or open the installer."
+        case .cannotReplace: "Rillvia could not replace this copy, so the installed version was kept. Open the installer to update it yourself."
         case .launchFailed: "The updated app could not start. Your previous version has been restored."
         }
     }

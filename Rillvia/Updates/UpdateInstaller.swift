@@ -81,7 +81,6 @@ protocol UpdateInstalling {
 struct MacUpdateInstaller: UpdateInstalling {
     func install(_ diskImage: URL, release: UpdateRelease) async throws {
         guard let asset = release.asset else { throw UpdateError.noInstaller }
-        try UpdateFiles.verify(diskImage, asset: asset)
         let app = Bundle.main.bundleURL.resolvingSymlinksInPath()
         guard app.lastPathComponent == "Rillvia.app",
               FileManager.default.isWritableFile(atPath: app.deletingLastPathComponent().path),
@@ -91,20 +90,30 @@ struct MacUpdateInstaller: UpdateInstalling {
         let plan = UpdateInstallPlan(id: UUID(), installedApp: app, previousVersion: previous,
             version: release.version.description, parentPID: ProcessInfo.processInfo.processIdentifier)
         let mount = try UpdateFiles.makeTemporaryDirectory()
+        let workspace = try UpdateFiles.makeTemporaryDirectory()
         var attached = false
         var helper: Process?
         defer {
-            if attached { try? UpdateTool.runSynchronously(URL(fileURLWithPath: "/usr/bin/hdiutil"), ["detach", mount.path]) }
+            if attached { try? UpdateTool.runSynchronously(URL(fileURLWithPath: "/usr/bin/hdiutil"), ["detach", "-force", mount.path]) }
             try? FileManager.default.removeItem(at: mount)
+            try? FileManager.default.removeItem(at: workspace)
         }
         do {
+            // A copy (an instant clone on APFS) still mounts after "Open installer" has attached the original.
+            let image = workspace.appendingPathComponent("Rillvia.dmg")
+            try await Task.detached {
+                try FileManager.default.copyItem(at: diskImage, to: image)
+                try UpdateFiles.verify(image, asset: asset)
+            }.value
             try await UpdateTool.run(URL(fileURLWithPath: "/usr/bin/hdiutil"),
-                ["attach", "-readonly", "-nobrowse", "-mountpoint", mount.path, diskImage.path])
+                ["attach", "-readonly", "-nobrowse", "-mountpoint", mount.path, image.path])
             attached = true
             let candidate = mount.appendingPathComponent("Rillvia.app", isDirectory: true)
-            try await Task.detached { try UpdateBundleValidation.validate(candidate, version: plan.version, installedApp: app) }.value
-            try FileManager.default.copyItem(at: candidate, to: plan.stagedApp)
-            try await Task.detached { try UpdateBundleValidation.validate(plan.stagedApp, version: plan.version, installedApp: app) }.value
+            try await Task.detached {
+                try UpdateBundleValidation.validate(candidate, version: plan.version, installedApp: app)
+                try FileManager.default.copyItem(at: candidate, to: plan.stagedApp)
+                try UpdateBundleValidation.validate(plan.stagedApp, version: plan.version, installedApp: app)
+            }.value
             try FileManager.default.createDirectory(at: plan.directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try JSONEncoder().encode(plan).write(to: plan.manifest, options: .atomic)
             let process = Process()
@@ -116,7 +125,8 @@ struct MacUpdateInstaller: UpdateInstalling {
             try process.run()
             for _ in 0..<100 {
                 if FileManager.default.fileExists(atPath: plan.ready.path) {
-                    try await UpdateTool.run(URL(fileURLWithPath: "/usr/bin/hdiutil"), ["detach", mount.path])
+                    // The app is already staged, so a busy volume (Spotlight, XProtect) must not stop the install.
+                    try? await UpdateTool.run(URL(fileURLWithPath: "/usr/bin/hdiutil"), ["detach", "-force", mount.path])
                     attached = false
                     NSApp.terminate(nil)
                     return
@@ -164,8 +174,15 @@ enum UpdateInstallerHelper {
                     return false
                 }
             } catch {
+                let fileManager = FileManager.default
+                // Only clear the failed copy once the previous app is back, so a hidden newer Rillvia never lingers.
+                if fileManager.fileExists(atPath: plan.installedApp.path), !fileManager.fileExists(atPath: plan.backupApp.path) {
+                    try? fileManager.removeItem(at: plan.stagedApp)
+                    try? fileManager.removeItem(at: plan.directory)
+                }
+                let reason = (error as? UpdateError) == .launchFailed ? "launch-failed" : "not-replaced"
                 try? UpdateTool.runSynchronously(URL(fileURLWithPath: "/usr/bin/open"),
-                    ["-n", "-a", plan.installedApp.path, "--args", "--rillvia-update-rolled-back"])
+                    ["-n", "-a", plan.installedApp.path, "--args", "--rillvia-update-rolled-back", reason])
                 throw error
             }
             try? FileManager.default.removeItem(at: plan.directory)

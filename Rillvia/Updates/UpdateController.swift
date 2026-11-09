@@ -29,7 +29,11 @@ final class UpdateController {
         self.installedVersion = installedVersion
         let timestamp = defaults.double(forKey: "updates.lastChecked")
         if timestamp > 0 { lastChecked = Date(timeIntervalSince1970: timestamp) }
-        if ProcessInfo.processInfo.arguments.contains("--rillvia-update-rolled-back") { phase = .failed(UpdateError.launchFailed.localizedDescription) }
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "--rillvia-update-rolled-back") {
+            let notReplaced = arguments.indices.contains(index + 1) && arguments[index + 1] == "not-replaced"
+            phase = .failed((notReplaced ? UpdateError.cannotReplace : UpdateError.launchFailed).localizedDescription)
+        }
     }
 
     func check() async {

@@ -39,17 +39,24 @@ struct ShortcutChord: Codable, Equatable, Sendable {
     var problem: String? {
         guard keyCode <= 126, !key.isEmpty, key.count <= 16, modifiers.rawValue & ~15 == 0 else { return "Record a key combination first." }
         guard modifiers.contains(.command) || modifiers.contains(.control) else { return "Include ⌘ or ⌃ so the shortcut does not replace ordinary typing." }
-        // Keep the existing app commands and standard text editing available.
-        if modifiers == .command, [0, 1, 3, 4, 6, 7, 8, 9, 11, 12, 13, 17, 18, 19, 20, 21, 31, 36, 37, 43, 44, 45, 46, 48, 49].contains(keyCode) {
-            return "\(display) is already used by Rillvia or macOS. Choose another combination."
+        // Keep the existing app commands and standard text editing available. Key codes are US positions,
+        // so the typed character is checked too: on QWERTZ, ⌘Z arrives with the code US keyboards give Y.
+        let character = key.lowercased()
+        func reserved(_ codes: Set<UInt32>, _ characters: Set<String>) -> Bool {
+            codes.contains(keyCode) || characters.contains(character)
         }
-        if modifiers == [.command, .shift], [6, 15, 20, 21, 23, 48].contains(keyCode) {
-            return "\(display) is already used by Rillvia or macOS. Choose another combination."
+        let isReserved = switch modifiers {
+        case .command:
+            reserved([0, 1, 3, 4, 6, 7, 8, 9, 11, 12, 13, 17, 18, 19, 20, 21, 31, 36, 37, 43, 44, 45, 46, 48, 49],
+                     ["a", "s", "f", "h", "z", "x", "c", "v", "b", "q", "w", "t", "o", "l", "n", "m", "1", "2", "3", "4", ",", "/"])
+        case [.command, .shift]:
+            reserved([6, 15, 20, 21, 23, 48], ["z", "r"])
+        case [.command, .option]:
+            reserved([17, 32, 53], ["t", "u"])
+        default:
+            false
         }
-        if modifiers == [.command, .option], [17, 32, 53].contains(keyCode) {
-            return "\(display) is already used by Rillvia or macOS. Choose another combination."
-        }
-        return nil
+        return isReserved ? "\(display) is already used by Rillvia or macOS. Choose another combination." : nil
     }
 }
 

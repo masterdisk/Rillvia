@@ -55,6 +55,14 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertNil(defaults.data(forKey: KeyboardShortcutStore.preferencesKey))
     }
 
+    func testReservedCommandsAreCaughtOnNonUSLayouts() {
+        // QWERTZ sends ⌘Z on the US Y position, and Dvorak sends ⌘C from the US I position.
+        XCTAssertNotNil(ShortcutChord(keyCode: 16, modifiers: .command, key: "z").problem)
+        XCTAssertNotNil(ShortcutChord(keyCode: 34, modifiers: .command, key: "c").problem)
+        XCTAssertNotNil(ShortcutChord(keyCode: 16, modifiers: [.command, .shift], key: "Z").problem)
+        XCTAssertNil(ShortcutChord(keyCode: 16, modifiers: .command, key: "y").problem)
+    }
+
     func testDuplicatePhysicalKeysConflictAcrossScopesAndEnableChecks() {
         let original = binding()
         XCTAssertNil(shortcuts.save(original))
