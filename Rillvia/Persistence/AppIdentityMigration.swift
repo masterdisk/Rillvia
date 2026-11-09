@@ -17,9 +17,13 @@ enum AppIdentityMigration {
     static func migrateState(in applicationSupport: URL, appURL: URL, fileManager: FileManager = .default) throws -> URL {
         let destination = applicationSupport.appendingPathComponent(AppIdentity.supportDirectoryName, isDirectory: true)
         var isDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: destination.path, isDirectory: &isDirectory) {
+        let destinationExists = fileManager.fileExists(atPath: destination.path, isDirectory: &isDirectory)
+        if destinationExists {
             guard isDirectory.boolValue else { throw CocoaError(.fileWriteFileExists) }
-            return destination
+            // The updater can create this folder first; only saved rules mean Rillvia already has its own state.
+            if fileManager.fileExists(atPath: destination.appendingPathComponent("configuration.json").path) {
+                return destination
+            }
         }
         let source = applicationSupport.appendingPathComponent(legacySupportDirectoryName, isDirectory: true)
         guard fileManager.fileExists(atPath: source.path, isDirectory: &isDirectory) else { return destination }
@@ -38,7 +42,16 @@ enum AppIdentityMigration {
             let updated = try JSONSerialization.data(withJSONObject: migrated, options: [.prettyPrinted, .sortedKeys])
             try updated.write(to: file, options: .atomic)
         }
-        try fileManager.moveItem(at: staging, to: destination)
+        if destinationExists {
+            // Rules move last, so an interrupted import is retried on the next launch.
+            let names = try fileManager.contentsOfDirectory(atPath: staging.path)
+                .sorted { ($0 == "configuration.json" ? 1 : 0) < ($1 == "configuration.json" ? 1 : 0) }
+            for name in names where !fileManager.fileExists(atPath: destination.appendingPathComponent(name).path) {
+                try fileManager.moveItem(at: staging.appendingPathComponent(name), to: destination.appendingPathComponent(name))
+            }
+        } else {
+            try fileManager.moveItem(at: staging, to: destination)
+        }
         return destination
     }
 

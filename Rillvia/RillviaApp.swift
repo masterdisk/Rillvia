@@ -60,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isPreparedForIncomingURLs = false
     private var isPreparingForIncomingURLs = false
     private var shortcutController: KeyboardShortcutController?
+    /// Windows the person already had open when links arrived; a link must not hide them.
+    private var windowsOpenBeforeLinks: Set<ObjectIdentifier> = []
 
     override init() {
         self.incomingURLQueue = IncomingURLQueue()
@@ -98,6 +100,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             shouldPresentMainWindowWhenConnected = true
             presentMainWindowIfPossible()
         }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing-incoming-while-open"),
+           let url = URL(string: "https://unmatched.invalid/while-open") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                self?.application(NSApp, open: [url])
+            }
+        }
+        #endif
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -105,10 +115,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
+        if !launchWindowPolicy.shouldSuppressMainWindow {
+            windowsOpenBeforeLinks = Set(NSApp.windows.filter { $0.isVisible && Self.isMainWindow($0) }.map(ObjectIdentifier.init))
+        }
         launchWindowPolicy.recordIncomingURLs()
         shouldPresentMainWindowWhenConnected = false
         incomingURLQueue.enqueue(urls)
-        NSApp.setActivationPolicy(.accessory)
+        if windowsOpenBeforeLinks.isEmpty {
+            NSApp.setActivationPolicy(.accessory)
+        }
         suppressAccidentalMainWindow()
         scheduleSuppression()
         Task {
@@ -125,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func userWantsMainWindow() {
+        windowsOpenBeforeLinks = []
         launchWindowPolicy.allowWindowPresentation()
         NSApp.setActivationPolicy(.regular)
     }
@@ -163,10 +179,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func suppressAccidentalMainWindow() {
         guard launchWindowPolicy.shouldSuppressMainWindow else { return }
-        for window in NSApp.windows where window.canBecomeMain || window.title == "Rillvia" {
+        for window in NSApp.windows where Self.isMainWindow(window)
+            && !windowsOpenBeforeLinks.contains(ObjectIdentifier(window)) {
             window.orderOut(nil)
         }
-        NSApp.setActivationPolicy(.accessory)
+        if windowsOpenBeforeLinks.isEmpty {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
+    // The status item and menu panel are always "visible"; only workspace windows count here.
+    private static func isMainWindow(_ window: NSWindow) -> Bool {
+        window.canBecomeMain || window.title == "Rillvia"
     }
 
     private func scheduleSuppression() {

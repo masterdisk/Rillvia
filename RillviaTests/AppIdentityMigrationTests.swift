@@ -104,6 +104,20 @@ final class AppIdentityMigrationTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("configuration.json")), bytes)
     }
 
+    func testImportStillRunsWhenOnlyTheUpdatesFolderExists() throws {
+        try StateRepository(baseDirectory: legacyDirectory).saveConfiguration(RoutingConfiguration(mode: .smart, fallbackBrowser: safari))
+        let destination = applicationSupport.appendingPathComponent("Rillvia", isDirectory: true)
+        let updates = destination.appendingPathComponent("Updates", isDirectory: true)
+        try FileManager.default.createDirectory(at: updates, withIntermediateDirectories: true)
+
+        XCTAssertEqual(try AppIdentityMigration.migrateState(in: applicationSupport, appURL: appURL), destination)
+
+        let imported = try StateRepository(baseDirectory: destination).loadConfiguration()
+        XCTAssertEqual(imported.mode, .smart)
+        XCTAssertEqual(imported.fallbackBrowser, safari)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: updates.path))
+    }
+
     func testMissingLegacyStateDoesNotCreateAStorageDirectory() throws {
         let repository = StateRepository(applicationSupport: applicationSupport)
 
