@@ -599,4 +599,13 @@ final class RillviaUITests: XCTestCase {
         let app = launch(["--ui-testing-routing-fixture", "--ui-testing-incoming-fallback"])
         XCTAssertFalse(app.windows.firstMatch.waitForExistence(timeout: 3))
     }
+
+    func testIncomingURLLeavesAnOpenWindowInPlace() {
+        let app = launch(["--ui-testing-routing-fixture", "--ui-testing-incoming-while-open"])
+        let window = app.windows.firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        // The link arrives 2.5 s after launch; the window the person opened must survive it.
+        XCTAssertFalse(window.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["workspace-title"].exists)
+    }
 }
