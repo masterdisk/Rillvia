@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.1 (9 November 2026)
+
+- Line up the Rule sets section of the sidebar with the pages above it, with a clear section label and a blue icon for the set you're browsing.
+- The installer's Read Me and first-open steps say to click **Done**, not **Move to Trash**, when macOS warns about an unnotarized app.
+
 ## 1.0.0 (9 November 2026)
 
 The first public release. Rillvia sends each link to the browser you choose for that site, from a quiet menu bar app.
