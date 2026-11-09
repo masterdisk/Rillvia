@@ -102,7 +102,7 @@ jobs:
           else
             cat >> "$notes" <<'NOTES'
 
-          **First open:** this build isn't notarized by Apple yet, so macOS stops it the first time. Click **Done**, open **System Settings → Privacy & Security**, and click **Open Anyway** next to Rillvia. Compare the DMG with the `.sha256` file below if you'd like to check the download.
+          **First open:** this build isn't notarized by Apple yet, so macOS stops it the first time. Click **Done** (not **Move to Trash**), open **System Settings → Privacy & Security**, and click **Open Anyway** next to Rillvia. Compare the DMG with the `.sha256` file below if you'd like to check the download.
           NOTES
           fi
       - name: Create draft release

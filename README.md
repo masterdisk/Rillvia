@@ -44,7 +44,7 @@
 
 1. Download **Rillvia-…-universal.dmg** from the [latest release](https://github.com/masterdisk/Rillvia/releases/latest).
 2. Open the DMG and drag **Rillvia** into **Applications**.
-3. Open Rillvia. The first time, macOS says it can't check the app for malicious software, because Rillvia isn't notarized by Apple yet. Click **Done**, then open **System Settings → Privacy & Security**, scroll to **Security** and click **Open Anyway** next to Rillvia.
+3. Open Rillvia. The first time, macOS says it can't check the app for malicious software, because Rillvia isn't notarized by Apple yet. Click **Done** (not **Move to Trash**), then open **System Settings → Privacy & Security**, scroll to **Security** and click **Open Anyway** next to Rillvia.
 4. Follow the short setup tour. Choose a browser for **Other links**, then **Turn on rules**. macOS asks whether to make Rillvia your default browser: choose **Use “Rillvia”**.
 
 That's it. Add a rule for a site you use for work and click a link to try it. Later versions install from **Settings → Updates**.

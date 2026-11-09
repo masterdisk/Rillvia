@@ -12,16 +12,18 @@ struct BrowserSidebar: View {
                 navigation("Rules", icon: "arrow.triangle.branch", key: "⌘3", destination: .rules)
                 navigation("Browsers", icon: "safari", key: "⌘4", destination: .direct)
                 if store.workspaceDestination == .rules || store.workspaceDestination == .profiles {
-                    Section("Rule sets") {
-                        ruleSet("Shared rules", id: nil, icon: "square.3.layers.3d")
-                        ForEach(store.routingConfiguration.profiles) { profile in
-                            ruleSet(profile.name, id: profile.id, icon: "folder")
-                        }
-                        Button("Manage rule sets", systemImage: "slider.horizontal.3") {
-                            store.workspace.request { store.workspace.showRuleSets = true }
-                        }.buttonStyle(.plain).foregroundStyle(AppColors.secondaryText)
-                            .accessibilityIdentifier("nav-profiles")
+                    Text("Rule sets").appFont(size: 12, weight: .semibold).foregroundStyle(AppColors.secondaryText)
+                        .padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 2)
+                        .accessibilityAddTraits(.isHeader)
+                    ruleSet("Shared rules", id: nil, icon: "square.3.layers.3d")
+                    ForEach(store.routingConfiguration.profiles) { profile in
+                        ruleSet(profile.name, id: profile.id, icon: "folder")
                     }
+                    Button { store.workspace.request { store.workspace.showRuleSets = true } } label: {
+                        sidebarRow(icon: "slider.horizontal.3", tint: AppColors.secondaryText) {
+                            Text("Manage rule sets").appFont(size: 14).foregroundStyle(AppColors.secondaryText)
+                        }
+                    }.buttonStyle(.plain).accessibilityIdentifier("nav-profiles")
                 }
               }.padding(12)
             }
@@ -62,16 +64,28 @@ struct BrowserSidebar: View {
                 store.workspaceDestination = .rules
             }
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon).frame(width: 23).foregroundStyle(AppColors.secondaryText)
-                Text(name).fontWeight(store.workspace.browsedProfileID == id ? .semibold : .regular)
-                    .fixedSize(horizontal: false, vertical: true)
+            let browsing = store.workspace.browsedProfileID == id
+            sidebarRow(icon: icon, tint: browsing ? .blue : AppColors.secondaryText) {
+                Text(name).appFont(size: 14, weight: browsing ? .semibold : .regular)
                 Spacer(minLength: 4)
                 if id != nil, store.routingConfiguration.activeProfileID == id {
                     Image(systemName: "circle.fill").appFont(size: 7).foregroundStyle(.green).accessibilityLabel("Active rule set")
                 }
-            }.padding(.vertical, 5).contentShape(Rectangle())
+            }
         }.buttonStyle(.plain).help("Browse \(name). The active rule set stays the same.")
+            .accessibilityAddTraits(store.workspace.browsedProfileID == id ? .isSelected : [])
+    }
+
+    /// Rule-set rows share the navigation rows' inset and icon column so the sidebar reads as one list.
+    private func sidebarRow<Content: View>(icon: String, tint: Color, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 15)).frame(width: 23).foregroundStyle(tint).accessibilityHidden(true)
+            HStack(spacing: 8) { content() }.fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 

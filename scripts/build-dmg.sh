@@ -63,8 +63,8 @@ if [[ -z "${RILLVIA_NOTARY_PROFILE:-}" ]]; then
   cat >> "$RILLVIA_STAGE/Read Me.txt" <<'TEXT'
 
 First open: this copy isn't notarized by Apple, so macOS stops it the
-first time. Click Done, open System Settings > Privacy & Security, and
-click Open Anyway next to Rillvia.
+first time. Click Done (not Move to Trash), open System Settings >
+Privacy & Security, and click Open Anyway next to Rillvia.
 TEXT
 fi
 
