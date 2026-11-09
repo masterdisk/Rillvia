@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.0.0 (9 November 2026)
+
+The first public release. Rillvia sends each link to the browser you choose for that site, from a quiet menu bar app.
+
 - Let **Turn on rules** resume rules that paused when macOS changed the default browser, using the saved Other links browser. Settings can turn paused rules off without replacing the browser macOS now uses.
 - Open every link that reaches Rillvia. While rules are off or paused, links go to the browser macOS uses. If a rule's browser can't launch, the link opens in Other links instead of holding up the links behind it.
 - Deliver profile and private-window links to browsers that are already open.

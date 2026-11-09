@@ -31,7 +31,14 @@ UI tests bring windows forward and interact with real native controls. They use 
 
 To compile the app and tests without launching anything, replace `test` with `build-for-testing`. Add `-only-testing:RillviaTests` to run the unit suite without the interactive UI suite. GitHub builds run unit tests by default; the manual workflow offers UI tests separately.
 
-The check results and their limits are recorded in [design-qa.md](../design-qa.md) and [the current review](../reviews/2026-10-08-quiet-controls/README.md). Actual macOS default-browser consent, browser account launches, login-item registration, and invocation from the Apple Shortcuts app are outside that automated run.
+Actual macOS default-browser consent, login-item registration and invocation from the Apple Shortcuts app are outside the automated tests.
+
+### Checks beyond the test suite
+
+Before 1.0.0, these ran against real system components:
+
+- **Profile and private-window links:** Rillvia's `NSWorkspaceApplicationAccess.open` sent a `--profile-directory` link and an `--incognito` link to an already-running Chrome with an isolated `--user-data-dir`. Chrome's DevTools showed both tabs in that instance, the private one in its off-the-record context.
+- **Update install:** ad hoc signed 1.0 and 1.1 bundles built from the real updater code. With the 1.1 disk image already mounted, as **Open installer** does, 1.0 installed 1.1 and it relaunched from the same path with no leftovers. A 1.1 that crashed on launch was rolled back to 1.0, relaunched with the launch-failed reason, and its hidden copy removed. On macOS 27.2, `hdiutil attach` warns that it is deprecated but still works.
 
 ## Sample configuration
 
@@ -54,6 +61,4 @@ On the first launch after upgrading, Rillvia imports the previous app's preferen
 
 After the identity change, quit the previous app and turn on rules in the new Rillvia app. macOS may ask you to confirm the new link handler. Imported settings alone do not grant the new bundle ID ownership of HTTP and HTTPS links.
 
-The approved studies and interaction specifications are in [reviews/2026-10-06-liquid-directions](../reviews/2026-10-06-liquid-directions). Native screenshots, comparisons, and review history are in [reviews/2026-10-06-rillvia-implementation](../reviews/2026-10-06-rillvia-implementation).
-
-Original brand assets, prompts, and the limited name check are in [assets/branding/rillvia](../assets/branding/rillvia). Browser icons come from installed applications, and navigation icons use native system symbols.
+Source artwork for the app icon and menu bar mark is in [assets/branding/rillvia](../assets/branding/rillvia). Browser icons come from installed applications, and navigation icons use native system symbols.

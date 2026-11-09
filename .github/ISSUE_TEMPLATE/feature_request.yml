@@ -1,0 +1,16 @@
+name: Feature idea
+description: Suggest a change to Rillvia
+labels: [enhancement]
+body:
+  - type: textarea
+    id: situation
+    attributes:
+      label: The situation
+      description: What were you trying to do when Rillvia got in the way or fell short?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: The change you'd like, and anything you've tried.

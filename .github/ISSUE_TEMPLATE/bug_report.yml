@@ -1,0 +1,29 @@
+name: Bug report
+description: Something in Rillvia doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.1
+    validations:
+      required: true
+  - type: input
+    id: browsers
+    attributes:
+      label: Browsers involved
+      placeholder: Safari 26, Google Chrome 157
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste the text from Settings → Help → Diagnostics → Copy Redacted Snapshot. It contains no links or browsing data.
+      render: text

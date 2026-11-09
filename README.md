@@ -9,14 +9,22 @@
 </p>
 
 <p align="center">
-  <sub>A native macOS menu bar app · macOS 26+ · Apple silicon and Intel</sub>
+  <sub>A native macOS menu bar app · macOS 26+ · Apple silicon and Intel · Free and open source</sub>
 </p>
 
 <p align="center">
-  <strong><a href="#get-rillvia">Get Rillvia</a></strong> &nbsp;·&nbsp;
+  <a href="https://github.com/masterdisk/Rillvia/releases/latest"><img src="https://img.shields.io/github/v/release/masterdisk/Rillvia?label=download&color=0062d2" alt="Latest release"></a>
+  <a href="https://github.com/masterdisk/Rillvia/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/masterdisk/Rillvia/build.yml?branch=main&label=build" alt="Build status"></a>
+  <img src="https://img.shields.io/badge/macOS-26%2B-555" alt="macOS 26 or later">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/masterdisk/Rillvia?color=555" alt="GPL-3.0 licence"></a>
+</p>
+
+<p align="center">
+  <strong><a href="https://github.com/masterdisk/Rillvia/releases/latest">Download Rillvia</a></strong> &nbsp;·&nbsp;
+  <a href="#get-rillvia">Install</a> &nbsp;·&nbsp;
   <a href="#a-small-menu-for-everyday-changes">See how it works</a> &nbsp;·&nbsp;
   <a href="#your-keys-your-actions">Keyboard shortcuts</a> &nbsp;·&nbsp;
-  <a href="#development">Development</a>
+  <a href="#questions">Questions</a>
 </p>
 
 <p align="center">
@@ -27,22 +35,32 @@
 </p>
 
 <p align="center">
-  <sub>Native app captures with sample rules, taken 7 October 2026.<br>
-  The latest solid controls are shown in the <a href="reviews/2026-10-08-quiet-controls/README.md">8 October design review</a>.</sub>
+  <sub>Native app captures with sample rules.</sub>
 </p>
 
 ## Get Rillvia
 
 **macOS 26 or later.** One universal app for Apple silicon and Intel Macs.
 
-Development builds are available from GitHub Actions:
+1. Download **Rillvia-…-universal.dmg** from the [latest release](https://github.com/masterdisk/Rillvia/releases/latest).
+2. Open the DMG and drag **Rillvia** into **Applications**.
+3. Open Rillvia. The first time, macOS says it can't check the app for malicious software, because Rillvia isn't notarized by Apple yet. Click **Done**, then open **System Settings → Privacy & Security**, scroll to **Security** and click **Open Anyway** next to Rillvia.
+4. Follow the short setup tour. Choose a browser for **Other links**, then **Turn on rules**. macOS asks whether to make Rillvia your default browser: choose **Use “Rillvia”**.
 
-1. Open [Build Rillvia](https://github.com/masterdisk/Rillvia/actions/workflows/build.yml) and select a successful run on **main**.
-2. Under **Artifacts**, download **Rillvia-universal-…** and unzip it.
-3. Open the DMG and drag **Rillvia** into **Applications**.
-4. Open Rillvia and follow the short setup tour. Choose a browser for **Other links**, then add your first rule.
+That's it. Add a rule for a site you use for work and click a link to try it. Later versions install from **Settings → Updates**.
 
-Builds stay available for 14 days. See [builds and signing](docs/DISTRIBUTION.md) for distribution details; published versions will appear in [Releases](https://github.com/masterdisk/Rillvia/releases).
+<details>
+  <summary><strong>Prefer Terminal for step 3?</strong></summary>
+
+After dragging Rillvia into Applications, this removes the download flag macOS checks:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Rillvia.app
+```
+
+Each release lists the DMG's SHA-256 checksum. Compare it with `shasum -a 256 ~/Downloads/Rillvia-*-universal.dmg` before installing.
+
+</details>
 
 <details>
   <summary><strong>Build from source</strong></summary>
@@ -178,16 +196,56 @@ Opening or copying a link preserves the original URL. Private-window choices app
 
 </details>
 
-## Development
+## Private by design
 
-Built with **Swift and SwiftUI**. The project, scheme, and app are named **Rillvia**; the bundle ID is `com.rillvia.app`.
+Rillvia runs entirely on your Mac. It never sends, logs or stores the links you open; it decides where each one goes and hands it to that browser. There are no accounts, analytics or background connections. The only network request is the update check you start yourself, which asks GitHub for the latest release.
 
-[Build and test](docs/DEVELOPMENT.md) &nbsp;·&nbsp;
-[DMG builds, CI, and updates](docs/DISTRIBUTION.md) &nbsp;·&nbsp;
-[Design checks](design-qa.md) &nbsp;·&nbsp;
-[Screenshot sources](docs/images/README.md)
+## Questions
 
-For updates from this private repository, use an existing GitHub CLI sign-in or **Open Releases**. [Update setup and installation checks](docs/DISTRIBUTION.md#updates-inside-rillvia).
+<details>
+  <summary><strong>Why does macOS ask before Rillvia opens links?</strong></summary>
+
+To route links, Rillvia becomes the default web browser while rules are on, and macOS always confirms that change. Rillvia then passes every link straight to the browser your rules choose.
+
+</details>
+
+<details>
+  <summary><strong>How do I go back to my usual browser, or remove Rillvia?</strong></summary>
+
+Choose **Settings → Turn off rules**. Rillvia hands links back to your Other links browser, or keeps the browser macOS already uses. Then quit Rillvia from the menu bar and move it to the Bin. Saved rules live in `~/Library/Application Support/Rillvia` if you want to remove them too.
+
+</details>
+
+<details>
+  <summary><strong>What if I change the default browser in System Settings?</strong></summary>
+
+Rillvia respects it and pauses your rules. Links go to the browser you picked. **Turn on rules** in Rillvia resumes them whenever you like.
+
+</details>
+
+<details>
+  <summary><strong>Does it work with Chrome profiles and private windows?</strong></summary>
+
+Yes. Rules can open a site in a specific Chrome, Edge, Brave, Vivaldi, Opera, Dia or Firefox profile, and previewed links can open in a private window, even when that browser is already running.
+
+</details>
+
+<details>
+  <summary><strong>Why isn't it notarized?</strong></summary>
+
+Notarization needs a paid Apple Developer account. The release workflow already supports Developer ID signing and notarization, and will use it once that account is set up. Until then, the source is here to read and build yourself.
+
+</details>
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Please include the text from **Settings → Help → Diagnostics → Copy Redacted Snapshot** with bug reports; it contains no links or browsing data.
+
+Built with **Swift and SwiftUI**. [Build and test](docs/DEVELOPMENT.md) &nbsp;·&nbsp; [DMG builds, CI and updates](docs/DISTRIBUTION.md) &nbsp;·&nbsp; [Changelog](CHANGELOG.md)
+
+## Licence
+
+Rillvia is free software under the [GNU General Public License v3.0](LICENSE). You can use, study, share and change it; versions you distribute must stay under the same licence.
 
 ---
 

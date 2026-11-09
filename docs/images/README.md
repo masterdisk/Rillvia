@@ -2,7 +2,7 @@
 
 These are captures of the native SwiftUI app with isolated sample data, not generated design mockups. Images are copied without cropping, resizing, or repainting.
 
-The gallery was captured on 7 October 2026, before the solid-control refinement. [The 8 October review](../../reviews/2026-10-08-quiet-controls/README.md) shows the newer shared controls in offscreen renders. Fresh full-app captures are deferred until interactive review is welcome.
+The gallery was captured on 7 October 2026, before buttons moved from glass to solid native styles, so a few controls look slightly different in the current app.
 
 | Image | Native source | Size in pixels |
 | --- | --- | --- |
@@ -15,4 +15,4 @@ The gallery was captured on 7 October 2026, before the solid-control refinement.
 | `shortcut-builder.png` | `testAppScopedShortcutDoesNotRunOutsideRillviaAndDeletionCanBeUndone`, recorded browser action before changing its scope | 940 × 680 |
 | `tutorial.png` | `testSettingsTutorialReplayAndKeyboardHelp`, first tour step in its owner window | 940 × 680 |
 
-These images come from the passing 7 October run, `build/rillvia-complete-validation.xcresult`, on macOS 27 with Xcode 27. Sheets are shown in their owner window; the menu capture contains only the status popup. See [design-qa.md](../../design-qa.md) for the checks and their limits, and [the capture manifest](capture-manifest.json) for source filenames and hashes. The earlier review remains in [reviews/2026-10-06-rillvia-implementation](../../reviews/2026-10-06-rillvia-implementation).
+These images come from a passing UI test run on macOS 27 with Xcode 27. Sheets are shown in their owner window; the menu capture contains only the status popup. [The capture manifest](capture-manifest.json) lists source filenames and hashes.
