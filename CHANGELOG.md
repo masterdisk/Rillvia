@@ -6,6 +6,19 @@
 
 The first public release. Rillvia sends each link to the browser you choose for that site, from a quiet menu bar app.
 
+- **A browser per site.** Send github.com to Chrome and everything else to Safari. Match a domain on its own or with its subdomains.
+- **Rule sets.** Keep Work and Personal rules apart and switch from the menu bar or a shortcut. Shared rules apply in every set.
+- **Use a browser for a while.** Send every link to one browser for 15, 30 or 60 minutes, or until you stop. Your rules resume afterwards.
+- **Preview before opening.** Paste a link to see which browser and rule it would use, without opening it.
+- **Profiles and private windows.** Open a site in a specific Chrome, Edge, Brave, Vivaldi, Opera, Dia or Firefox profile, or open a previewed link privately.
+- **Your keys.** Record shortcuts that work everywhere for switching browsers or rule sets, plus Apple Shortcuts actions.
+- **Polite with macOS.** Turning rules off hands links back to your browser, and Rillvia respects default-browser changes you make later.
+- **Private.** Links never leave your Mac. The only network request is the update check you start.
+- **Updates in the app.** Download, verify and install new versions from Settings.
+- **Comfortable to use.** Light and dark appearance, text up to 200%, keyboard shortcuts for every page and VoiceOver labels throughout.
+
+## Preview builds
+
 - Let **Turn on rules** resume rules that paused when macOS changed the default browser, using the saved Other links browser. Settings can turn paused rules off without replacing the browser macOS now uses.
 - Open every link that reaches Rillvia. While rules are off or paused, links go to the browser macOS uses. If a rule's browser can't launch, the link opens in Other links instead of holding up the links behind it.
 - Deliver profile and private-window links to browsers that are already open.

@@ -59,6 +59,14 @@ Install and restart. Your saved rules and shortcuts stay in place.
 
 https://github.com/masterdisk/Rillvia
 TEXT
+if [[ -z "${RILLVIA_NOTARY_PROFILE:-}" ]]; then
+  cat >> "$RILLVIA_STAGE/Read Me.txt" <<'TEXT'
+
+First open: this copy isn't notarized by Apple, so macOS stops it the
+first time. Click Done, open System Settings > Privacy & Security, and
+click Open Anyway next to Rillvia.
+TEXT
+fi
 
 hdiutil create -volname Rillvia -srcfolder "$RILLVIA_STAGE" -fs HFS+ -format UDZO \
   -imagekey zlib-level=9 -ov "$RILLVIA_DMG"
