@@ -177,6 +177,7 @@ struct RuleDraftEditor: View {
                 HStack(spacing: 12) {
                     Spacer(minLength: 0)
                     Button("Cancel") { store.workspace.cancelRule(); error = nil }.modifier(AccessibleButtonStyle()).controlSize(.large)
+                        .disabled(draft.id != nil && !store.workspace.hasUnsavedRule)
                     Button(draft.id == nil ? "Save rule" : "Save changes", action: save).modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large)
                         .keyboardShortcut("s").disabled(!isValid || !store.workspace.hasUnsavedRule).accessibilityIdentifier("save-rule")
                 }
