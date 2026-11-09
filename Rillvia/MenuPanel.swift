@@ -123,7 +123,13 @@ struct MenuPanel: View {
                     .modifier(AccessibleButtonStyle(prominent: true)).controlSize(.large)
                         .disabled(chosen == nil || !store.isSmartRoutingActive)
                         .accessibilityIdentifier("menu-start-temporary-browser")
-                    Text(store.isSmartRoutingActive ? "Your rules resume when it ends." : "Turn on rules in Overview first.").appFont(.callout).foregroundStyle(AppColors.secondaryText)
+                    if store.isSmartRoutingActive {
+                        Text("Your rules resume when it ends.").appFont(.callout).foregroundStyle(AppColors.secondaryText)
+                    } else {
+                        Button("Turn on rules to use a browser temporarily") { Task { await store.enableSmartRouting() } }
+                            .buttonStyle(.link).tint(AppColors.linkText).accentColor(AppColors.linkText)
+                            .disabled(store.isSwitching).accessibilityIdentifier("menu-enable-rules")
+                    }
                     if store.hasClipboardWebURL {
                         Button("Preview clipboard link", systemImage: "doc.on.clipboard") {
                             guard store.stageClipboardURL() else { return }

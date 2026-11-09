@@ -66,6 +66,8 @@ final class BrowserStore {
 
     private var installed: [InstalledBrowser] = []
     private var icons: [String: NSImage] = [:]
+    // Every routed link reloads the browser list; icons only change when an app moves or updates.
+    @ObservationIgnored private var iconCache: [String: NSImage] = [:]
     private var lynxVisible = false
     private var quipIndex = 0
     private var titleGate = TapGate(threshold: 5, interval: 1.5)
@@ -293,7 +295,7 @@ final class BrowserStore {
             if let browser = handlerHealth.agreedExternalBrowser, AppIdentity.isSelf(browser, reference: rillvia) {
                 "Links still go to the app Rillvia replaced. Turn on rules to finish the move. Your rules and the \(name(for: fallback)) choice are saved."
             } else {
-                "macOS changed the default browser. Rillvia will not take it back. Your rules and the \(name(for: fallback)) choice are saved."
+                "macOS changed the default browser, so rules are paused. Rillvia will not take it back unless you turn rules on. Your rules and the \(name(for: fallback)) choice are saved."
             }
         case .disabling(let fallback):
             "Waiting for macOS to make \(name(for: fallback)) the usual browser."
@@ -1491,8 +1493,12 @@ final class BrowserStore {
         }
 
         icons = Dictionary(uniqueKeysWithValues: installed.map { browser in
-            let icon = NSWorkspace.shared.icon(forFile: browser.iconURL.path == "/" ? browser.appURL.path : browser.iconURL.path)
+            let path = browser.iconURL.path == "/" ? browser.appURL.path : browser.iconURL.path
+            let key = "\(path)|\(browser.version)"
+            if let cached = iconCache[key] { return (browser.id, cached) }
+            let icon = NSWorkspace.shared.icon(forFile: path)
             icon.size = NSSize(width: 64, height: 64)
+            iconCache[key] = icon
             return (browser.id, icon)
         })
         revision += 1
